@@ -331,6 +331,11 @@ func main() {
 		setupLog.Info("Operator secret supplied", "secret", secret)
 	}
 
+	dpSAName := os.Getenv("DP_SERVICE_ACCOUNT_NAME")
+	if dpSAName == "" {
+		dpSAName = "intel-gpu-dp"
+	}
+
 	draSAName := os.Getenv("DRA_SERVICE_ACCOUNT_NAME")
 	if draSAName == "" {
 		draSAName = "intel-gpu-dra"
@@ -339,6 +344,7 @@ func main() {
 	copts := controller.ControllerOpts{
 		Namespace:             ns,
 		SecretName:            secret,
+		DPServiceAccountName:  dpSAName,
 		DRAServiceAccountName: draSAName,
 		RequeueDelay:          time.Second * 5,
 		DRAEnable:             features[draCluster],

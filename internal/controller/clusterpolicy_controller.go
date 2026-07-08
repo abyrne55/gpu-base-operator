@@ -47,6 +47,7 @@ type ControllerOpts struct {
 	ReqName               string
 	Namespace             string
 	SecretName            string
+	DPServiceAccountName  string
 	DRAServiceAccountName string
 	RequeueDelay          time.Duration
 	DRAEnable             bool

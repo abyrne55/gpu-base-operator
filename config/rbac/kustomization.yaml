@@ -30,6 +30,11 @@ resources:
 - clusterpolicy_admin_role.yaml
 - clusterpolicy_editor_role.yaml
 - clusterpolicy_viewer_role.yaml
+# DP RBAC — ServiceAccount and OpenShift SCC for KMM-managed DP pods (SCC is no-op on non-OpenShift)
+- dp_serviceaccount.yaml
+- dp_scc.yaml
+- dp_scc_role.yaml
+- dp_scc_rolebinding.yaml
 # DRA RBAC — ServiceAccount, ClusterRole, ClusterRoleBinding for KMM-managed DRA pods
 - dra_serviceaccount.yaml
 - dra_clusterrole.yaml

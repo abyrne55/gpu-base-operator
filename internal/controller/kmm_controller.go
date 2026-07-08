@@ -124,6 +124,7 @@ func (r *KMMReconciler) Reconcile(ctx context.Context, cp *v1alpha.ClusterPolicy
 
 	if !r.Opts.DRAEnable && cp != nil && cp.Spec.ResourceRegistration == resourceModeDRA {
 		addIfMissing(&cp.Status.Errors, "DRA is not enabled in the cluster, but ClusterPolicy requests it.")
+		return ctrl.Result{}, nil
 	}
 
 	if cp == nil || !cp.DeletionTimestamp.IsZero() {
@@ -281,7 +282,7 @@ func (r *KMMReconciler) generateDRAArgs(cp *v1alpha.ClusterPolicy) []string {
 // KMM adds: kubelet-plugins, kubelet-plugins-registry, cdi (/var/run/cdi).
 func draExtraVolumes() []v1.Volume {
 	return []v1.Volume{
-		{Name: "etccdi", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/opt/cdi", Type: &hostPathDirOrCreate}}},
+		{Name: "etccdi", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/etc/cdi", Type: &hostPathDirOrCreate}}},
 		{Name: "sysfs", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/sys"}}},
 		{Name: "xpumdrundir", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/var/run/xpumd", Type: &hostPathDirOrCreate}}},
 	}
@@ -291,6 +292,7 @@ func (r *KMMReconciler) setDevicePlugin(mod *kmmv1beta1.Module, cp *v1alpha.Clus
 	mod.Spec.DRA = nil
 
 	mod.Spec.DevicePlugin = &kmmv1beta1.DevicePluginSpec{
+		ServiceAccountName: r.Opts.DPServiceAccountName,
 		Container: kmmv1beta1.CommonContainerSpec{
 			Image:           cp.Spec.DevicePluginSpec.PluginImage,
 			ImagePullPolicy: v1.PullIfNotPresent,
