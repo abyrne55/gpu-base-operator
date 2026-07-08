@@ -125,6 +125,32 @@ func buildDRASCC(name string) *unstructured.Unstructured {
 	})
 }
 
+// buildKMMDRASCC returns the SCC for KMM-managed DRA DaemonSet pods.
+// KMM sets hostNetwork: true and privileged: true on DRA pods.
+func buildKMMDRASCC(name string) *unstructured.Unstructured {
+	return buildSCC(name, map[string]interface{}{
+		"allowPrivilegedContainer": true,
+		"allowHostDirVolumePlugin": true,
+		"allowHostIPC":             false,
+		"allowHostNetwork":         true,
+		"allowHostPID":             false,
+		"allowHostPorts":           false,
+		"allowPrivilegeEscalation": true,
+		"allowedCapabilities":      nil,
+		"defaultAddCapabilities":   nil,
+		"fsGroup":                  map[string]interface{}{"type": "RunAsAny"},
+		"readOnlyRootFilesystem":   false,
+		"requiredDropCapabilities": nil,
+		"runAsUser":                map[string]interface{}{"type": "RunAsAny"},
+		"seLinuxContext":           map[string]interface{}{"type": "RunAsAny"},
+		"seccompProfiles":          []interface{}{"*"},
+		"supplementalGroups":       map[string]interface{}{"type": "RunAsAny"},
+		"volumes":                  []interface{}{"hostPath", "projected", "secret", "configMap"},
+		"users":                    []interface{}{},
+		"groups":                   []interface{}{},
+	})
+}
+
 // buildFWUpdateSCC returns the SCC for the GPU firmware update Job pods.
 // The updater container runs privileged as root to access GPU firmware interfaces.
 func buildFWUpdateSCC(name string) *unstructured.Unstructured {

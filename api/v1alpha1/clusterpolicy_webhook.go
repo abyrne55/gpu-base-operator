@@ -95,6 +95,7 @@ func validateClusterPolicySpec(spec *ClusterPolicySpec) (admission.Warnings, err
 	errs = append(errs, validatePullSecret(spec)...)
 	errs = append(errs, validateConfigMapOverride(spec)...)
 	errs = append(errs, validateKueueSpec(spec)...)
+	errs = append(errs, validateKMMSpec(spec)...)
 
 	if w := warnForSpecProblems(spec); w != "" {
 		warnings = append(warnings, w)
@@ -217,6 +218,28 @@ func validateKueueSpec(spec *ClusterPolicySpec) []error {
 			}
 
 			seenLQKeys[key] = true
+		}
+	}
+
+	return errs
+}
+
+func validateKMMSpec(spec *ClusterPolicySpec) []error {
+	if spec.KMM == nil {
+		return nil
+	}
+
+	var errs []error
+
+	if !spec.KMM.UseInTreeDriver {
+		if spec.KMM.DriverImage == "" {
+			errs = append(errs, fmt.Errorf("kmm.driverImage is required when kmm.useInTreeDriver is false"))
+		} else if _, err := reference.ParseNormalizedNamed(spec.KMM.DriverImage); err != nil {
+			errs = append(errs, fmt.Errorf("invalid image reference in kmm.driverImage: %q: %w", spec.KMM.DriverImage, err))
+		}
+
+		if spec.KMM.DriverVersion == "" {
+			errs = append(errs, fmt.Errorf("kmm.driverVersion is required when kmm.useInTreeDriver is false"))
 		}
 	}
 

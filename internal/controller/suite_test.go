@@ -32,6 +32,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	kmmv1beta1 "github.com/kubernetes-sigs/kernel-module-management/api/v1beta1"
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	resv1 "k8s.io/api/resource/v1"
@@ -78,6 +79,8 @@ var _ = BeforeSuite(func() {
 	err = resv1.AddToScheme(s)
 	Expect(err).NotTo(HaveOccurred())
 	err = corev1.AddToScheme(s)
+	Expect(err).NotTo(HaveOccurred())
+	err = kmmv1beta1.AddToScheme(s)
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme

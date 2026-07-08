@@ -45,6 +45,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
 
+	kmmv1beta1 "github.com/kubernetes-sigs/kernel-module-management/api/v1beta1"
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	resv1 "k8s.io/api/resource/v1"
@@ -63,6 +64,7 @@ var (
 	setupLog        = ctrl.Log.WithName("setup")
 	openShiftGroups = []string{"route.openshift.io", "security.openshift.io"}
 	draGroups       = []string{"resource.k8s.io"}
+	kmmGroups       = []string{"kmm.sigs.x-k8s.io"}
 )
 
 const (
@@ -70,6 +72,7 @@ const (
 
 	openshiftCluster = "OpenShift"
 	draCluster       = "DRA"
+	kmmCluster       = "KMM"
 )
 
 func init() {
@@ -80,6 +83,7 @@ func init() {
 	utilruntime.Must(prometheusv1.AddToScheme(scheme))
 	utilruntime.Must(resv1.AddToScheme(scheme))
 	utilruntime.Must(kueuev1.AddToScheme(scheme))
+	utilruntime.Must(kmmv1beta1.AddToScheme(scheme))
 
 	// +kubebuilder:scaffold:scheme
 }
@@ -103,6 +107,7 @@ func detectClusterFeatures() (map[string]bool, error) {
 	features := map[string]bool{
 		openshiftCluster: false,
 		draCluster:       false,
+		kmmCluster:       false,
 	}
 
 	for _, group := range apiGroups.Groups {
@@ -111,6 +116,9 @@ func detectClusterFeatures() (map[string]bool, error) {
 		}
 		if slices.Contains(draGroups, group.Name) {
 			features[draCluster] = true
+		}
+		if slices.Contains(kmmGroups, group.Name) {
+			features[kmmCluster] = true
 		}
 	}
 
@@ -328,6 +336,7 @@ func main() {
 		SecretName:   secret,
 		RequeueDelay: time.Second * 5,
 		DRAEnable:    features[draCluster],
+		KMMEnable:    features[kmmCluster],
 		OpenShift:    features[openshiftCluster],
 	}
 

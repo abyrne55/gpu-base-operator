@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	v1alpha "github.com/intel/gpu-base-operator/api/v1alpha1"
+	kmmv1beta1 "github.com/kubernetes-sigs/kernel-module-management/api/v1beta1"
 )
 
 // ClusterPolicyReconciler reconciles a ClusterPolicy object
@@ -55,6 +56,7 @@ type ControllerOpts struct {
 	SecretName   string
 	RequeueDelay time.Duration
 	DRAEnable    bool
+	KMMEnable    bool
 	OpenShift    bool
 }
 
@@ -163,11 +165,15 @@ func (r *ClusterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	subControllers := make([]SubControllerInterface, 0, 4)
 
-	// Initialize sub-controllers
-	subControllers = append(subControllers, &DevicePluginReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
+	if cp != nil && cp.Spec.KMM != nil {
+		subControllers = append(subControllers, &KMMReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
+	} else {
+		subControllers = append(subControllers, &DevicePluginReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
+		// Include DRA subcontroller even though cluster might not be configured to use DRA, so it can report a status correctly.
+		subControllers = append(subControllers, &DRAReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
+	}
+
 	subControllers = append(subControllers, &XpuManagerReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
-	// Include DRA subcontroller even though cluster might not be configured to use DRA, so it can report a status correctly.
-	subControllers = append(subControllers, &DRAReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
 	subControllers = append(subControllers, &MiscReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
 
 	// Ensure finalizer is present on live (non-deleted) ClusterPolicy objects.
@@ -313,6 +319,10 @@ func (r *ClusterPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts Contro
 		For(&v1alpha.ClusterPolicy{}).
 		Named("clusterpolicy").
 		Owns(&apps.DaemonSet{})
+
+	if opts.KMMEnable {
+		b = b.Owns(&kmmv1beta1.Module{})
+	}
 
 	// Only watch DRA pods when DRA is enabled in the cluster, to avoid unnecessary
 	// pod list/watch permissions and reconcile noise when DRA is not in use.

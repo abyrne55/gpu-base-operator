@@ -69,6 +69,11 @@ type ClusterPolicySpec struct {
 	// +kubebuilder:validation:Range=0:4
 	// +kubebuilder:validation:Default=2
 	LogLevel int32 `json:"logLevel,omitempty"`
+
+	// KMM configures Kernel Module Management integration.
+	// When set, a KMM Module CR is created instead of managing DP/DRA DaemonSets directly.
+	// +optional
+	KMM *KMMSpec `json:"kmm,omitempty"`
 }
 
 // DynamicResourceAllocationSpec defines the desired state of DynamicResourceAllocation.
@@ -147,11 +152,28 @@ type XpuManagerSpec struct {
 	MonitoringResource string `json:"monitoringResource,omitempty"`
 }
 
+// KMMSpec configures Kernel Module Management integration.
+type KMMSpec struct {
+	// UseInTreeDriver: when true (default), ModuleLoader is nil — the xe/i915 driver
+	// ships with the kernel. When false, KMM loads an OOT xe module.
+	// +kubebuilder:default=true
+	UseInTreeDriver bool `json:"useInTreeDriver"`
+
+	// DriverImage: container image with the OOT xe driver. Required when UseInTreeDriver is false.
+	// +optional
+	DriverImage string `json:"driverImage,omitempty"`
+
+	// DriverVersion: version string for the OOT driver. Required when UseInTreeDriver is false.
+	// +optional
+	DriverVersion string `json:"driverVersion,omitempty"`
+}
+
 // ClusterPolicyStatus defines the observed state of ClusterPolicy.
 type ClusterPolicyStatus struct {
 	DevicePluginStatus string   `json:"devicePluginStatus,omitempty"`
 	DRAStatus          string   `json:"draStatus,omitempty"`
 	XPUManagerStatus   string   `json:"xpuManagerStatus,omitempty"`
+	KMMModuleStatus    string   `json:"kmmModuleStatus,omitempty"`
 	Errors             []string `json:"errors,omitempty"`
 }
 
@@ -183,6 +205,7 @@ type LocalQueueSpec struct {
 // +kubebuilder:printcolumn:name="DP",type=string,JSONPath=`.status.devicePluginStatus`
 // +kubebuilder:printcolumn:name="DRA",type=string,JSONPath=`.status.draStatus`
 // +kubebuilder:printcolumn:name="XPU",type=string,JSONPath=`.status.xpuManagerStatus`
+// +kubebuilder:printcolumn:name="KMM",type=string,JSONPath=`.status.kmmModuleStatus`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +operator-sdk:csv:customresourcedefinitions:displayName="Intel GPU Cluster Policy"
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

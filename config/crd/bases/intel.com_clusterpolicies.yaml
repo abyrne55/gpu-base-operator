@@ -24,6 +24,9 @@ spec:
     - jsonPath: .status.xpuManagerStatus
       name: XPU
       type: string
+    - jsonPath: .status.kmmModuleStatus
+      name: KMM
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -135,6 +138,28 @@ spec:
                     maximum: 130
                     minimum: 1
                     type: integer
+                type: object
+              kmm:
+                description: |-
+                  KMM configures Kernel Module Management integration.
+                  When set, a KMM Module CR is created instead of managing DP/DRA DaemonSets directly.
+                properties:
+                  driverImage:
+                    description: 'DriverImage: container image with the OOT xe driver.
+                      Required when UseInTreeDriver is false.'
+                    type: string
+                  driverVersion:
+                    description: 'DriverVersion: version string for the OOT driver.
+                      Required when UseInTreeDriver is false.'
+                    type: string
+                  useInTreeDriver:
+                    default: true
+                    description: |-
+                      UseInTreeDriver: when true (default), ModuleLoader is nil — the xe/i915 driver
+                      ships with the kernel. When false, KMM loads an OOT xe module.
+                    type: boolean
+                required:
+                - useInTreeDriver
                 type: object
               kueue:
                 description: Define Kueue queues
@@ -289,6 +314,8 @@ spec:
                 items:
                   type: string
                 type: array
+              kmmModuleStatus:
+                type: string
               xpuManagerStatus:
                 type: string
             type: object
