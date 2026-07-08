@@ -331,13 +331,19 @@ func main() {
 		setupLog.Info("Operator secret supplied", "secret", secret)
 	}
 
+	draSAName := os.Getenv("DRA_SERVICE_ACCOUNT_NAME")
+	if draSAName == "" {
+		draSAName = "intel-gpu-dra"
+	}
+
 	copts := controller.ControllerOpts{
-		Namespace:    ns,
-		SecretName:   secret,
-		RequeueDelay: time.Second * 5,
-		DRAEnable:    features[draCluster],
-		KMMEnable:    features[kmmCluster],
-		OpenShift:    features[openshiftCluster],
+		Namespace:             ns,
+		SecretName:            secret,
+		DRAServiceAccountName: draSAName,
+		RequeueDelay:          time.Second * 5,
+		DRAEnable:             features[draCluster],
+		KMMEnable:             features[kmmCluster],
+		OpenShift:             features[openshiftCluster],
 	}
 
 	if err := (&controller.ClusterPolicyReconciler{

@@ -55,15 +55,12 @@ var _ = Describe("KMM Controller", func() {
 		})
 
 		It("should create a KMM Module CR with DRA spec", func() {
-			By("creating a ClusterPolicy with KMM and DRA")
+			By("creating a ClusterPolicy with DRA")
 			cp := &v1alpha.ClusterPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName},
 				Spec: v1alpha.ClusterPolicySpec{
 					ResourceRegistration: "dra",
 					UseNFDLabeling:       true,
-					KMM: &v1alpha.KMMSpec{
-						UseInTreeDriver: true,
-					},
 					DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
 						Image:          "ghcr.io/intel/gpu-dra:v0.11.0",
 						PodHealthCheck: true,
@@ -77,9 +74,10 @@ var _ = Describe("KMM Controller", func() {
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 				Opts: ControllerOpts{
-					Namespace: namespace,
-					DRAEnable: true,
-					KMMEnable: true,
+					Namespace:             namespace,
+					DRAEnable:             true,
+					KMMEnable:             true,
+					DRAServiceAccountName: "intel-gpu-dra",
 				},
 			}
 
@@ -148,9 +146,6 @@ var _ = Describe("KMM Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName},
 				Spec: v1alpha.ClusterPolicySpec{
 					ResourceRegistration: "dra",
-					KMM: &v1alpha.KMMSpec{
-						UseInTreeDriver: true,
-					},
 					DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
 						Image:          "ghcr.io/intel/gpu-dra:v0.11.0",
 						PodHealthCheck: true,
@@ -163,9 +158,10 @@ var _ = Describe("KMM Controller", func() {
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 				Opts: ControllerOpts{
-					Namespace: namespace,
-					DRAEnable: true,
-					KMMEnable: true,
+					Namespace:             namespace,
+					DRAEnable:             true,
+					KMMEnable:             true,
+					DRAServiceAccountName: "intel-gpu-dra",
 				},
 			}
 
@@ -216,9 +212,6 @@ var _ = Describe("KMM Controller", func() {
 				Spec: v1alpha.ClusterPolicySpec{
 					ResourceRegistration: "dp",
 					ResourceMonitoring:   true,
-					KMM: &v1alpha.KMMSpec{
-						UseInTreeDriver: true,
-					},
 					DevicePluginSpec: v1alpha.DevicePluginSpec{
 						PluginImage: "intel/intel-gpu-plugin:0.36.0",
 					},
@@ -234,9 +227,10 @@ var _ = Describe("KMM Controller", func() {
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 				Opts: ControllerOpts{
-					Namespace: namespace,
-					DRAEnable: true,
-					KMMEnable: true,
+					Namespace:             namespace,
+					DRAEnable:             true,
+					KMMEnable:             true,
+					DRAServiceAccountName: "intel-gpu-dra",
 				},
 			}
 
@@ -266,7 +260,7 @@ var _ = Describe("KMM Controller", func() {
 		})
 	})
 
-	Context("When configuring an OOT driver via KMM", func() {
+	Context("When configuring an OOT driver via KernelModule", func() {
 		const (
 			namespace    = "kmm-oot-create"
 			resourceName = "kmm-oot-create"
@@ -293,10 +287,10 @@ var _ = Describe("KMM Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName},
 				Spec: v1alpha.ClusterPolicySpec{
 					ResourceRegistration: "dra",
-					KMM: &v1alpha.KMMSpec{
-						UseInTreeDriver: false,
-						DriverImage:     "registry.example.com/xe-driver:1.0",
-						DriverVersion:   "1.0.0",
+					KernelModule: &v1alpha.KernelModuleSpec{
+						ModuleName: "xe",
+						Image:      "registry.example.com/xe-driver:1.0",
+						Version:    "1.0.0",
 					},
 					DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
 						Image: "ghcr.io/intel/gpu-dra:v0.11.0",
@@ -309,9 +303,10 @@ var _ = Describe("KMM Controller", func() {
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 				Opts: ControllerOpts{
-					Namespace: namespace,
-					DRAEnable: true,
-					KMMEnable: true,
+					Namespace:             namespace,
+					DRAEnable:             true,
+					KMMEnable:             true,
+					DRAServiceAccountName: "intel-gpu-dra",
 				},
 			}
 
@@ -358,9 +353,6 @@ var _ = Describe("KMM Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName},
 				Spec: v1alpha.ClusterPolicySpec{
 					ResourceRegistration: "dra",
-					KMM: &v1alpha.KMMSpec{
-						UseInTreeDriver: true,
-					},
 					DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
 						Image: "ghcr.io/intel/gpu-dra:v0.11.0",
 					},
@@ -372,9 +364,10 @@ var _ = Describe("KMM Controller", func() {
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 				Opts: ControllerOpts{
-					Namespace: namespace,
-					DRAEnable: true,
-					KMMEnable: true,
+					Namespace:             namespace,
+					DRAEnable:             true,
+					KMMEnable:             true,
+					DRAServiceAccountName: "intel-gpu-dra",
 				},
 			}
 
@@ -433,9 +426,6 @@ var _ = Describe("KMM Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName},
 				Spec: v1alpha.ClusterPolicySpec{
 					ResourceRegistration: "dra",
-					KMM: &v1alpha.KMMSpec{
-						UseInTreeDriver: true,
-					},
 					DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
 						Image: "ghcr.io/intel/gpu-dra:v0.11.0",
 					},
@@ -457,9 +447,10 @@ var _ = Describe("KMM Controller", func() {
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 				Opts: ControllerOpts{
-					Namespace: namespace,
-					DRAEnable: true,
-					KMMEnable: true,
+					Namespace:             namespace,
+					DRAEnable:             true,
+					KMMEnable:             true,
+					DRAServiceAccountName: "intel-gpu-dra",
 				},
 			}
 

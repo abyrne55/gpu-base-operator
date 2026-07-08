@@ -24,9 +24,6 @@ spec:
     - jsonPath: .status.xpuManagerStatus
       name: XPU
       type: string
-    - jsonPath: .status.kmmModuleStatus
-      name: KMM
-      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -139,27 +136,26 @@ spec:
                     minimum: 1
                     type: integer
                 type: object
-              kmm:
+              kernelModule:
                 description: |-
-                  KMM configures Kernel Module Management integration.
-                  When set, a KMM Module CR is created instead of managing DP/DRA DaemonSets directly.
+                  KernelModule configures out-of-tree kernel module loading via KMM.
+                  When set, KMM loads the specified OOT driver module on each node.
+                  When nil, the in-tree kernel driver is used.
                 properties:
-                  driverImage:
-                    description: 'DriverImage: container image with the OOT xe driver.
-                      Required when UseInTreeDriver is false.'
+                  image:
+                    description: Image is the container image containing the OOT driver
+                      module.
                     type: string
-                  driverVersion:
-                    description: 'DriverVersion: version string for the OOT driver.
-                      Required when UseInTreeDriver is false.'
+                  moduleName:
+                    description: ModuleName is the kernel module to load, e.g. "xe".
                     type: string
-                  useInTreeDriver:
-                    default: true
-                    description: |-
-                      UseInTreeDriver: when true (default), ModuleLoader is nil — the xe/i915 driver
-                      ships with the kernel. When false, KMM loads an OOT xe module.
-                    type: boolean
+                  version:
+                    description: Version is the OOT driver version string.
+                    type: string
                 required:
-                - useInTreeDriver
+                - image
+                - moduleName
+                - version
                 type: object
               kueue:
                 description: Define Kueue queues
@@ -314,8 +310,6 @@ spec:
                 items:
                   type: string
                 type: array
-              kmmModuleStatus:
-                type: string
               xpuManagerStatus:
                 type: string
             type: object

@@ -62,6 +62,13 @@ spec:
     configMapOverride: {{ .Values.xpu.configMapOverride | default "" }}
 {{- end }}
 
+{{- if .Values.kernelModule }}
+  kernelModule:
+    moduleName: {{ .Values.kernelModule.moduleName }}
+    image: {{ .Values.kernelModule.image }}
+    version: {{ .Values.kernelModule.version }}
+{{- end }}
+
 {{- if .Values.pullSecret }}
   pullSecret: {{ .Values.pullSecret }}
 {{- end }}

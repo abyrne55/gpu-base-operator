@@ -48,31 +48,6 @@ func buildSCC(name string, spec map[string]interface{}) *unstructured.Unstructur
 	return scc
 }
 
-// buildDevicePluginSCC returns the SCC for the GPU device plugin daemonset.
-func buildDevicePluginSCC(name string) *unstructured.Unstructured {
-	return buildSCC(name, map[string]interface{}{
-		"allowPrivilegedContainer": false,
-		"allowHostDirVolumePlugin": true,
-		"allowHostIPC":             false,
-		"allowHostNetwork":         false,
-		"allowHostPID":             false,
-		"allowHostPorts":           false,
-		"allowPrivilegeEscalation": false,
-		"allowedCapabilities":      nil,
-		"defaultAddCapabilities":   nil,
-		"fsGroup":                  map[string]interface{}{"type": "RunAsAny"},
-		"readOnlyRootFilesystem":   false,
-		"requiredDropCapabilities": []interface{}{"ALL"},
-		"runAsUser":                map[string]interface{}{"type": "RunAsAny"},
-		"seLinuxContext":           map[string]interface{}{"type": "RunAsAny"},
-		"seccompProfiles":          []interface{}{"*"},
-		"supplementalGroups":       map[string]interface{}{"type": "RunAsAny"},
-		"volumes":                  []interface{}{"hostPath", "emptyDir"},
-		"users":                    []interface{}{},
-		"groups":                   []interface{}{},
-	})
-}
-
 // buildXpuManagerSCC returns the SCC for the XPU Manager daemonset.
 // The daemonset runs as root and requires SYS_ADMIN capability.
 func buildXpuManagerSCC(name string) *unstructured.Unstructured {
@@ -94,58 +69,6 @@ func buildXpuManagerSCC(name string) *unstructured.Unstructured {
 		"seccompProfiles":          []interface{}{"*"},
 		"supplementalGroups":       map[string]interface{}{"type": "RunAsAny"},
 		"volumes":                  []interface{}{"hostPath", "configMap"},
-		"users":                    []interface{}{},
-		"groups":                   []interface{}{},
-	})
-}
-
-// buildDRASCC returns the SCC for the GPU DRA driver daemonset.
-// The daemonset uses hostPath volumes and mounts a service account token (projected volume).
-func buildDRASCC(name string) *unstructured.Unstructured {
-	return buildSCC(name, map[string]interface{}{
-		"allowPrivilegedContainer": false,
-		"allowHostDirVolumePlugin": true,
-		"allowHostIPC":             false,
-		"allowHostNetwork":         false,
-		"allowHostPID":             false,
-		"allowHostPorts":           false,
-		"allowPrivilegeEscalation": false,
-		"allowedCapabilities":      nil,
-		"defaultAddCapabilities":   nil,
-		"fsGroup":                  map[string]interface{}{"type": "RunAsAny"},
-		"readOnlyRootFilesystem":   false,
-		"requiredDropCapabilities": []interface{}{"ALL"},
-		"runAsUser":                map[string]interface{}{"type": "RunAsAny"},
-		"seLinuxContext":           map[string]interface{}{"type": "RunAsAny"},
-		"seccompProfiles":          []interface{}{"*"},
-		"supplementalGroups":       map[string]interface{}{"type": "RunAsAny"},
-		"volumes":                  []interface{}{"hostPath", "projected"},
-		"users":                    []interface{}{},
-		"groups":                   []interface{}{},
-	})
-}
-
-// buildKMMDRASCC returns the SCC for KMM-managed DRA DaemonSet pods.
-// KMM sets hostNetwork: true and privileged: true on DRA pods.
-func buildKMMDRASCC(name string) *unstructured.Unstructured {
-	return buildSCC(name, map[string]interface{}{
-		"allowPrivilegedContainer": true,
-		"allowHostDirVolumePlugin": true,
-		"allowHostIPC":             false,
-		"allowHostNetwork":         true,
-		"allowHostPID":             false,
-		"allowHostPorts":           false,
-		"allowPrivilegeEscalation": true,
-		"allowedCapabilities":      nil,
-		"defaultAddCapabilities":   nil,
-		"fsGroup":                  map[string]interface{}{"type": "RunAsAny"},
-		"readOnlyRootFilesystem":   false,
-		"requiredDropCapabilities": nil,
-		"runAsUser":                map[string]interface{}{"type": "RunAsAny"},
-		"seLinuxContext":           map[string]interface{}{"type": "RunAsAny"},
-		"seccompProfiles":          []interface{}{"*"},
-		"supplementalGroups":       map[string]interface{}{"type": "RunAsAny"},
-		"volumes":                  []interface{}{"hostPath", "projected", "secret", "configMap"},
 		"users":                    []interface{}{},
 		"groups":                   []interface{}{},
 	})

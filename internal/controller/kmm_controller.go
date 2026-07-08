@@ -20,9 +20,9 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
-	rbac "k8s.io/api/rbac/v1"
 	resourcev1 "k8s.io/api/resource/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,7 +34,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	v1alpha "github.com/intel/gpu-base-operator/api/v1alpha1"
-	"github.com/intel/gpu-base-operator/config/deployments"
 	kmmv1beta1 "github.com/kubernetes-sigs/kernel-module-management/api/v1beta1"
 )
 
@@ -51,12 +50,62 @@ type KMMReconciler struct {
 
 const (
 	kmmModuleSuffix = "-gpu"
-	gpuDriverModule = "xe"
 
-	kmmDRAResourcePart = "kmm-dra"
+	healthCheckPort    = 51516
+	gpuDeviceClass     = "gpu.intel.com"
+	vfioGpuDeviceClass = "gpu-vfio.intel.com"
 
-	kmmNotEnabledMsg = "KMM is not installed in the cluster, but ClusterPolicy requests it (spec.kmm is set)."
+	kmmNotEnabledMsg = "KMM is not installed in the cluster."
 )
+
+var hostPathDirOrCreate = v1.HostPathDirectoryOrCreate
+
+func logLevelForDp(spec *v1alpha.ClusterPolicy) int32 {
+	return max(spec.Spec.LogLevel, spec.Spec.DevicePluginSpec.LogLevel)
+}
+
+func hexArgStr(s []string) string {
+	a := make([]string, 0, len(s))
+	for _, str := range s {
+		if !strings.HasPrefix(str, "0x") {
+			str = "0x" + str
+		}
+
+		a = append(a, str)
+	}
+	return strings.Join(a, ",")
+}
+
+func dpArgs(spec *v1alpha.ClusterPolicy) []string {
+	var args []string
+
+	dpspec := spec.Spec.DevicePluginSpec
+
+	if spec.Spec.ResourceMonitoring {
+		args = append(args,
+			"-enable-monitoring",
+			"-xpumd-endpoint=/run/xpumd/intelxpuinfo.sock")
+	}
+
+	logLevel := logLevelForDp(spec)
+	if logLevel > 0 {
+		args = append(args, fmt.Sprintf("-v=%d", logLevel))
+	}
+
+	if len(dpspec.ByPathMode) > 0 {
+		args = append(args, fmt.Sprintf("-bypath=%s", dpspec.ByPathMode))
+	}
+
+	if len(dpspec.AllowIDs) > 0 {
+		args = append(args, fmt.Sprintf("-allow-ids=%s", hexArgStr(dpspec.AllowIDs)))
+	}
+
+	if len(dpspec.DenyIDs) > 0 {
+		args = append(args, fmt.Sprintf("-deny-ids=%s", hexArgStr(dpspec.DenyIDs)))
+	}
+
+	return args
+}
 
 func kmmModuleName(cpName string) string {
 	return cpName + kmmModuleSuffix
@@ -73,20 +122,12 @@ func (r *KMMReconciler) Reconcile(ctx context.Context, cp *v1alpha.ClusterPolicy
 		return ctrl.Result{}, nil
 	}
 
-	if cp == nil || !cp.DeletionTimestamp.IsZero() || cp.Spec.KMM == nil {
-		return r.deleteModuleIfExists(ctx, moduleName)
+	if !r.Opts.DRAEnable && cp != nil && cp.Spec.ResourceRegistration == resourceModeDRA {
+		addIfMissing(&cp.Status.Errors, "DRA is not enabled in the cluster, but ClusterPolicy requests it.")
 	}
 
-	if cp.Spec.ResourceRegistration == resourceModeDRA {
-		if err := r.ensureDRARBAC(ctx, cp.Name); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to ensure DRA RBAC for KMM: %w", err)
-		}
-
-		if r.Opts.OpenShift {
-			if err := r.ensureOpenShiftDRASCC(ctx, cp.Name); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to ensure OpenShift DRA SCC for KMM: %w", err)
-			}
-		}
+	if cp == nil || !cp.DeletionTimestamp.IsZero() {
+		return r.deleteModuleIfExists(ctx, moduleName)
 	}
 
 	mod := &kmmv1beta1.Module{
@@ -133,41 +174,31 @@ func (r *KMMReconciler) setModuleDesiredState(mod *kmmv1beta1.Module, cp *v1alph
 }
 
 func (r *KMMReconciler) buildNodeSelector(cp *v1alpha.ClusterPolicy) map[string]string {
-	selector := map[string]string{
-		"kubernetes.io/arch": "amd64",
-	}
-
-	for k, v := range cp.Spec.NodeSelector {
-		selector[k] = v
-	}
-
-	if cp.Spec.UseNFDLabeling {
-		selector["intel.feature.node.kubernetes.io/gpu"] = trueValue
-	}
-
-	return selector
+	return gpuNodeSelector(cp)
 }
 
 func (r *KMMReconciler) setModuleLoader(mod *kmmv1beta1.Module, cp *v1alpha.ClusterPolicy) {
-	if cp.Spec.KMM.UseInTreeDriver {
+	if cp.Spec.KernelModule == nil {
 		mod.Spec.ModuleLoader = nil
 		return
 	}
 
+	km := cp.Spec.KernelModule
+
 	mod.Spec.ModuleLoader = &kmmv1beta1.ModuleLoaderSpec{
 		Container: kmmv1beta1.ModuleLoaderContainerSpec{
 			Modprobe: kmmv1beta1.ModprobeSpec{
-				ModuleName: gpuDriverModule,
+				ModuleName: km.ModuleName,
 			},
 			KernelMappings: []kmmv1beta1.KernelMapping{
 				{
 					Regexp:                "^.+$",
-					ContainerImage:        cp.Spec.KMM.DriverImage,
-					InTreeModulesToRemove: []string{gpuDriverModule},
+					ContainerImage:        km.Image,
+					InTreeModulesToRemove: []string{km.ModuleName},
 				},
 			},
 			ImagePullPolicy: v1.PullAlways,
-			Version:         cp.Spec.KMM.DriverVersion,
+			Version:         km.Version,
 		},
 	}
 }
@@ -182,11 +213,9 @@ func (r *KMMReconciler) setDRA(mod *kmmv1beta1.Module, cp *v1alpha.ClusterPolicy
 	// KMM's DRA reconciler automatically adds: kubelet-plugins, kubelet-plugins-registry,
 	// cdi (/var/run/cdi) volumes/mounts and NODE_NAME, CDI_ROOT, POD_UID env vars.
 	// We only include what KMM doesn't provide.
-	_, _, _, saName := buildOpenShiftNames(cp.Name, kmmDRAResourcePart)
-
 	mod.Spec.DRA = &kmmv1beta1.DRASpec{
 		DriverName:         gpuDeviceClass,
-		ServiceAccountName: saName,
+		ServiceAccountName: r.Opts.DRAServiceAccountName,
 		Container: kmmv1beta1.CommonContainerSpec{
 			Image:           cp.Spec.DynamicResourceAllocationSpec.Image,
 			ImagePullPolicy: v1.PullIfNotPresent,
@@ -251,18 +280,15 @@ func (r *KMMReconciler) generateDRAArgs(cp *v1alpha.ClusterPolicy) []string {
 // draExtraVolumes returns only the volumes KMM's DRA reconciler doesn't add automatically.
 // KMM adds: kubelet-plugins, kubelet-plugins-registry, cdi (/var/run/cdi).
 func draExtraVolumes() []v1.Volume {
-	directoryOrCreate := v1.HostPathDirectoryOrCreate
 	return []v1.Volume{
-		{Name: "etccdi", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/opt/cdi", Type: &directoryOrCreate}}},
+		{Name: "etccdi", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/opt/cdi", Type: &hostPathDirOrCreate}}},
 		{Name: "sysfs", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/sys"}}},
-		{Name: "xpumdrundir", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/var/run/xpumd", Type: &directoryOrCreate}}},
+		{Name: "xpumdrundir", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/var/run/xpumd", Type: &hostPathDirOrCreate}}},
 	}
 }
 
 func (r *KMMReconciler) setDevicePlugin(mod *kmmv1beta1.Module, cp *v1alpha.ClusterPolicy) {
 	mod.Spec.DRA = nil
-
-	directoryOrCreate := v1.HostPathDirectoryOrCreate
 
 	mod.Spec.DevicePlugin = &kmmv1beta1.DevicePluginSpec{
 		Container: kmmv1beta1.CommonContainerSpec{
@@ -294,7 +320,7 @@ func (r *KMMReconciler) setDevicePlugin(mod *kmmv1beta1.Module, cp *v1alpha.Clus
 			{Name: "devfs", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/dev/dri"}}},
 			{Name: "sysfsdrm", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/sys/class/drm"}}},
 			{Name: "kubeletsockets", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/var/lib/kubelet/device-plugins"}}},
-			{Name: "cdipath", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/var/run/cdi", Type: &directoryOrCreate}}},
+			{Name: "cdipath", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/var/run/cdi", Type: &hostPathDirOrCreate}}},
 		},
 	}
 
@@ -304,7 +330,7 @@ func (r *KMMReconciler) setDevicePlugin(mod *kmmv1beta1.Module, cp *v1alpha.Clus
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
 					Path: "/run/xpumd",
-					Type: &directoryOrCreate,
+					Type: &hostPathDirOrCreate,
 				},
 			},
 		})
@@ -313,61 +339,6 @@ func (r *KMMReconciler) setDevicePlugin(mod *kmmv1beta1.Module, cp *v1alpha.Clus
 			MountPath: "/run/xpumd",
 		})
 	}
-}
-
-func (r *KMMReconciler) ensureDRARBAC(ctx context.Context, crName string) error {
-	_, _, _, saName := buildOpenShiftNames(crName, kmmDRAResourcePart)
-	rbacName := crName + "-" + kmmDRAResourcePart
-
-	if err := createServiceAccount(ctx, r.Client, saName, r.Opts.Namespace); err != nil {
-		return fmt.Errorf("failed to ensure KMM DRA ServiceAccount: %w", err)
-	}
-
-	cr := &rbac.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: rbacName}}
-	if _, err := controllerutil.CreateOrPatch(ctx, r.Client, cr, func() error {
-		desired := deployments.DynamicResourceAllocationClusterRole()
-		cr.Rules = desired.Rules
-		return nil
-	}); err != nil {
-		return fmt.Errorf("failed to ensure KMM DRA ClusterRole: %w", err)
-	}
-
-	crb := &rbac.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: rbacName}}
-	if _, err := controllerutil.CreateOrPatch(ctx, r.Client, crb, func() error {
-		crb.Subjects = []rbac.Subject{{
-			Kind:      rbac.ServiceAccountKind,
-			Name:      saName,
-			Namespace: r.Opts.Namespace,
-		}}
-		crb.RoleRef = rbac.RoleRef{
-			APIGroup: rbac.GroupName,
-			Kind:     "ClusterRole",
-			Name:     rbacName,
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("failed to ensure KMM DRA ClusterRoleBinding: %w", err)
-	}
-
-	return nil
-}
-
-func (r *KMMReconciler) ensureOpenShiftDRASCC(ctx context.Context, crName string) error {
-	sccName, roleName, bindingName, saName := buildOpenShiftNames(crName, kmmDRAResourcePart)
-
-	if err := ensureSCC(ctx, r.Client, buildKMMDRASCC(sccName)); err != nil {
-		return fmt.Errorf("failed to ensure KMM DRA SCC: %w", err)
-	}
-
-	if err := createSCCRole(ctx, r.Client, roleName, sccName); err != nil {
-		return fmt.Errorf("failed to ensure KMM DRA SCC ClusterRole: %w", err)
-	}
-
-	if err := createSCCRoleBinding(ctx, r.Client, bindingName, roleName, saName, r.Opts.Namespace); err != nil {
-		return fmt.Errorf("failed to ensure KMM DRA SCC ClusterRoleBinding: %w", err)
-	}
-
-	return nil
 }
 
 func (r *KMMReconciler) deleteModuleIfExists(ctx context.Context, name string) (ctrl.Result, error) {
@@ -382,44 +353,44 @@ func (r *KMMReconciler) deleteModuleIfExists(ctx context.Context, name string) (
 		return ctrl.Result{}, fmt.Errorf("failed to get KMM Module %s: %w", name, err)
 	}
 
-	klog.Infof("Deleting KMM Module %s", name)
+	if mod.Spec.DRA != nil && r.anyAllocatedResourceClaims(ctx, mod.Spec.DRA.DriverName) {
+		return ctrl.Result{RequeueAfter: r.Opts.RequeueDelay}, requeueReconcileErr{}
+	}
 
-	wasDRA := mod.Spec.DRA != nil
+	klog.Infof("Deleting KMM Module %s", name)
 
 	if err := r.Delete(ctx, mod); err != nil && !apierrors.IsNotFound(err) {
 		return ctrl.Result{}, fmt.Errorf("failed to delete KMM Module %s: %w", name, err)
 	}
 
-	if wasDRA {
-		r.cleanupDRARBAC(ctx, r.Opts.ReqName)
-	}
-
 	return ctrl.Result{}, nil
 }
 
-func (r *KMMReconciler) cleanupDRARBAC(ctx context.Context, crName string) {
-	sccName, sccRoleName, sccBindingName, saName := buildOpenShiftNames(crName, kmmDRAResourcePart)
-	rbacName := crName + "-" + kmmDRAResourcePart
+func (r *KMMReconciler) anyAllocatedResourceClaims(ctx context.Context, driverName string) bool {
+	var rcList resourcev1.ResourceClaimList
 
-	cr := &rbac.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: rbacName}}
-	if err := r.Delete(ctx, cr); err != nil && !apierrors.IsNotFound(err) {
-		klog.Errorf("Failed to delete KMM DRA ClusterRole %s: %v", rbacName, err)
+	klog.Info("Checking for allocated ResourceClaims that would prevent DRA removal")
+
+	if err := r.List(ctx, &rcList); err != nil {
+		klog.Error(err, "unable to list ResourceClaims, assuming allocated claims exist")
+		return true
 	}
 
-	crb := &rbac.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: rbacName}}
-	if err := r.Delete(ctx, crb); err != nil && !apierrors.IsNotFound(err) {
-		klog.Errorf("Failed to delete KMM DRA ClusterRoleBinding %s: %v", rbacName, err)
-	}
+	for _, claim := range rcList.Items {
+		alloc := claim.Status.Allocation
+		if alloc == nil || len(alloc.Devices.Results) == 0 {
+			continue
+		}
 
-	if r.Opts.OpenShift {
-		deleteOpenShiftSCCResources(ctx, r.Client, sccName, sccRoleName, sccBindingName, saName, r.Opts.Namespace)
-	} else {
-		// On non-OpenShift, just delete the ServiceAccount
-		sa := &v1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: saName, Namespace: r.Opts.Namespace}}
-		if err := r.Delete(ctx, sa); err != nil && !apierrors.IsNotFound(err) {
-			klog.Errorf("Failed to delete KMM DRA ServiceAccount %s: %v", saName, err)
+		for _, dev := range alloc.Devices.Results {
+			if dev.Driver == driverName {
+				klog.Infof("Found allocated ResourceClaim with GPU device: %s", claim.Name)
+				return true
+			}
 		}
 	}
+
+	return false
 }
 
 func (r *KMMReconciler) updateStatus(cp *v1alpha.ClusterPolicy, mod *kmmv1beta1.Module) {
@@ -428,23 +399,9 @@ func (r *KMMReconciler) updateStatus(cp *v1alpha.ClusterPolicy, mod *kmmv1beta1.
 		dsStatus := mod.Status.DRA
 		cp.Status.DRAStatus = fmt.Sprintf("%d/%d", dsStatus.AvailableNumber, dsStatus.DesiredNumber)
 		cp.Status.DevicePluginStatus = notAvailableStatus
-		cp.Status.KMMModuleStatus = daemonSetStatusSummary(dsStatus)
 	case resourceModeDP:
 		dsStatus := mod.Status.DevicePlugin
 		cp.Status.DevicePluginStatus = fmt.Sprintf("%d/%d", dsStatus.AvailableNumber, dsStatus.DesiredNumber)
 		cp.Status.DRAStatus = notAvailableStatus
-		cp.Status.KMMModuleStatus = daemonSetStatusSummary(dsStatus)
 	}
-}
-
-func daemonSetStatusSummary(ds kmmv1beta1.DaemonSetStatus) string {
-	if ds.DesiredNumber == 0 {
-		return "Pending"
-	}
-
-	if ds.AvailableNumber == ds.DesiredNumber {
-		return "Ready"
-	}
-
-	return fmt.Sprintf("Progressing (%d/%d)", ds.AvailableNumber, ds.DesiredNumber)
 }

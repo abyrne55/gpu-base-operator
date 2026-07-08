@@ -95,7 +95,7 @@ func validateClusterPolicySpec(spec *ClusterPolicySpec) (admission.Warnings, err
 	errs = append(errs, validatePullSecret(spec)...)
 	errs = append(errs, validateConfigMapOverride(spec)...)
 	errs = append(errs, validateKueueSpec(spec)...)
-	errs = append(errs, validateKMMSpec(spec)...)
+	errs = append(errs, validateKernelModuleSpec(spec)...)
 
 	if w := warnForSpecProblems(spec); w != "" {
 		warnings = append(warnings, w)
@@ -224,23 +224,21 @@ func validateKueueSpec(spec *ClusterPolicySpec) []error {
 	return errs
 }
 
-func validateKMMSpec(spec *ClusterPolicySpec) []error {
-	if spec.KMM == nil {
+func validateKernelModuleSpec(spec *ClusterPolicySpec) []error {
+	if spec.KernelModule == nil {
 		return nil
 	}
 
 	var errs []error
 
-	if !spec.KMM.UseInTreeDriver {
-		if spec.KMM.DriverImage == "" {
-			errs = append(errs, fmt.Errorf("kmm.driverImage is required when kmm.useInTreeDriver is false"))
-		} else if _, err := reference.ParseNormalizedNamed(spec.KMM.DriverImage); err != nil {
-			errs = append(errs, fmt.Errorf("invalid image reference in kmm.driverImage: %q: %w", spec.KMM.DriverImage, err))
-		}
+	if spec.KernelModule.ModuleName == "" {
+		errs = append(errs, fmt.Errorf("kernelModule.moduleName is required"))
+	}
 
-		if spec.KMM.DriverVersion == "" {
-			errs = append(errs, fmt.Errorf("kmm.driverVersion is required when kmm.useInTreeDriver is false"))
-		}
+	if spec.KernelModule.Image == "" {
+		errs = append(errs, fmt.Errorf("kernelModule.image is required"))
+	} else if _, err := reference.ParseNormalizedNamed(spec.KernelModule.Image); err != nil {
+		errs = append(errs, fmt.Errorf("invalid image reference in kernelModule.image: %q: %w", spec.KernelModule.Image, err))
 	}
 
 	return errs

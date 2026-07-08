@@ -1,0 +1,9 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: intel-gpu-dra-resourceslices
+  labels:
+    app.kubernetes.io/name: intel-gpu-base-operator
+spec:
+  policyName: intel-gpu-dra-resourceslices
+  validationActions: [Deny]

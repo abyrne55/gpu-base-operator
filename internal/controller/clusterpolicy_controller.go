@@ -24,20 +24,13 @@ import (
 	"time"
 
 	apps "k8s.io/api/apps/v1"
-	core "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	v1alpha "github.com/intel/gpu-base-operator/api/v1alpha1"
 	kmmv1beta1 "github.com/kubernetes-sigs/kernel-module-management/api/v1beta1"
@@ -51,13 +44,14 @@ type ClusterPolicyReconciler struct {
 }
 
 type ControllerOpts struct {
-	ReqName      string
-	Namespace    string
-	SecretName   string
-	RequeueDelay time.Duration
-	DRAEnable    bool
-	KMMEnable    bool
-	OpenShift    bool
+	ReqName               string
+	Namespace             string
+	SecretName            string
+	DRAServiceAccountName string
+	RequeueDelay          time.Duration
+	DRAEnable             bool
+	KMMEnable             bool
+	OpenShift             bool
 }
 
 type requeueReconcileErr struct {
@@ -69,10 +63,9 @@ type SubControllerInterface interface {
 }
 
 const (
-	appLabel = "app"
 	ownerKey = "owner"
 
-	draNotEnabledMsg = "DRA is not enabled in the cluster, but ClusterPolicy requests it."
+	xpumdVolumeName = "runxpumd"
 
 	resourceModeDRA = "dra"
 	resourceModeDP  = "dp"
@@ -85,6 +78,22 @@ const (
 
 	maxKeptErrors = 10
 )
+
+func gpuNodeSelector(cp *v1alpha.ClusterPolicy) map[string]string {
+	selector := map[string]string{
+		"kubernetes.io/arch": "amd64",
+	}
+
+	for k, v := range cp.Spec.NodeSelector {
+		selector[k] = v
+	}
+
+	if cp.Spec.UseNFDLabeling {
+		selector["intel.feature.node.kubernetes.io/gpu"] = trueValue
+	}
+
+	return selector
+}
 
 func addIfMissing(slice *[]string, s string) {
 	if slices.Contains(*slice, s) {
@@ -163,16 +172,9 @@ func (r *ClusterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	opts := r.Opts
 	opts.ReqName = req.Name
 
-	subControllers := make([]SubControllerInterface, 0, 4)
+	subControllers := make([]SubControllerInterface, 0, 3)
 
-	if cp != nil && cp.Spec.KMM != nil {
-		subControllers = append(subControllers, &KMMReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
-	} else {
-		subControllers = append(subControllers, &DevicePluginReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
-		// Include DRA subcontroller even though cluster might not be configured to use DRA, so it can report a status correctly.
-		subControllers = append(subControllers, &DRAReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
-	}
-
+	subControllers = append(subControllers, &KMMReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
 	subControllers = append(subControllers, &XpuManagerReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
 	subControllers = append(subControllers, &MiscReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
 
@@ -245,72 +247,6 @@ func (r *ClusterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{}, retErr
 }
 
-// draPodToClusterPolicy maps any DRA pod event to reconcile requests for all existing
-// ClusterPolicy objects. This avoids relying on r.Opts.ReqName (startup config) as a
-// source of truth — instead it queries the actual state of the cluster.
-func (r *ClusterPolicyReconciler) draPodToClusterPolicy(ctx context.Context, _ client.Object) []reconcile.Request {
-	cpList := &v1alpha.ClusterPolicyList{}
-	if err := r.List(ctx, cpList); err != nil {
-		klog.Error(err, "failed to list ClusterPolicies for DRA pod event")
-		return nil
-	}
-
-	reqs := make([]reconcile.Request, len(cpList.Items))
-	for i := range cpList.Items {
-		reqs[i] = reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: cpList.Items[i].Name},
-		}
-	}
-
-	return reqs
-}
-
-// draPodReadinessPredicate returns a predicate that passes only DRA pod events where
-// the Ready condition has changed (or the pod was created/deleted). This avoids
-// spurious reconciles while still refreshing ClusterPolicy status when a DRA pod
-// health check transitions between passing and failing.
-func draPodReadinessPredicate() predicate.Predicate {
-	isDRAPod := func(obj client.Object) bool {
-		return obj.GetLabels()[appLabel] == draValue
-	}
-
-	isPodReady := func(pod *core.Pod) bool {
-		for _, c := range pod.Status.Conditions {
-			if c.Type == core.PodReady {
-				return c.Status == core.ConditionTrue
-			}
-		}
-
-		return false
-	}
-
-	return predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			return isDRAPod(e.Object)
-		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			if !isDRAPod(e.ObjectNew) {
-				return false
-			}
-
-			oldPod, ok1 := e.ObjectOld.(*core.Pod)
-			newPod, ok2 := e.ObjectNew.(*core.Pod)
-
-			if !ok1 || !ok2 {
-				return false
-			}
-
-			return isPodReady(oldPod) != isPodReady(newPod)
-		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			return isDRAPod(e.Object)
-		},
-		GenericFunc: func(e event.GenericEvent) bool {
-			return false
-		},
-	}
-}
-
 // SetupWithManager sets up the controller with the Manager.
 func (r *ClusterPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts ControllerOpts) error {
 	r.Opts = opts
@@ -322,16 +258,6 @@ func (r *ClusterPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts Contro
 
 	if opts.KMMEnable {
 		b = b.Owns(&kmmv1beta1.Module{})
-	}
-
-	// Only watch DRA pods when DRA is enabled in the cluster, to avoid unnecessary
-	// pod list/watch permissions and reconcile noise when DRA is not in use.
-	if opts.DRAEnable {
-		b = b.Watches(
-			&core.Pod{},
-			handler.EnqueueRequestsFromMapFunc(r.draPodToClusterPolicy),
-			builder.WithPredicates(draPodReadinessPredicate()),
-		)
 	}
 
 	return b.Complete(r)

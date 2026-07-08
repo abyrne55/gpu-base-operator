@@ -35,6 +35,11 @@ kueue:
       - name: gpu-queue
         namespace: default
 
+# kernelModule:
+#   moduleName: xe
+#   image: registry.example.com/xe-driver:1.0
+#   version: "1.0.0"
+
 pullSecret: null
 nodeSelector: {}
 tolerations: []
