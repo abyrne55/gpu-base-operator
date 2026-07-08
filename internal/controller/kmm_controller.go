@@ -373,6 +373,7 @@ func (r *KMMReconciler) anyAllocatedResourceClaims(ctx context.Context, driverNa
 
 	klog.Info("Checking for allocated ResourceClaims that would prevent DRA removal")
 
+	// Fail safe: assume claims exist so we don't delete the Module while pods may still be using GPUs.
 	if err := r.List(ctx, &rcList); err != nil {
 		klog.Error(err, "unable to list ResourceClaims, assuming allocated claims exist")
 		return true
