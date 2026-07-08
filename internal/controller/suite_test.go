@@ -18,8 +18,11 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -91,6 +94,7 @@ var _ = BeforeSuite(func() {
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),
 			filepath.Join("..", "..", "config", "deployments", "nfd", "crds"),
+			filepath.Join(goModDir("github.com/kubernetes-sigs/kernel-module-management"), "config", "crd", "bases"),
 			"testdata",
 		},
 		ErrorIfCRDPathMissing: true,
@@ -130,6 +134,14 @@ var _ = AfterSuite(func() {
 // This function streamlines the process by finding the required binaries, similar to
 // setting the 'KUBEBUILDER_ASSETS' environment variable. To ensure the binaries are
 // properly set up, run 'make setup-envtest' beforehand.
+func goModDir(module string) string {
+	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", module).Output()
+	if err != nil {
+		panic(fmt.Sprintf("failed to resolve module directory for %s: %v", module, err))
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func getFirstFoundEnvTestBinaryDir() string {
 	basePath := filepath.Join("..", "..", "bin", "k8s")
 	entries, err := os.ReadDir(basePath)
