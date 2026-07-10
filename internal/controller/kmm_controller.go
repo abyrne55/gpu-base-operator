@@ -235,7 +235,6 @@ func (r *KMMReconciler) setDRA(mod *kmmv1beta1.Module, cp *v1alpha.ClusterPolicy
 				},
 			},
 			VolumeMounts: []v1.VolumeMount{
-				{Name: "etccdi", MountPath: "/etc/cdi"},
 				{Name: "xpumdrundir", MountPath: "/var/run/xpumd"},
 				{Name: "sysfs", MountPath: "/sysfs"},
 			},
@@ -279,10 +278,9 @@ func (r *KMMReconciler) generateDRAArgs(cp *v1alpha.ClusterPolicy) []string {
 }
 
 // draExtraVolumes returns only the volumes KMM's DRA reconciler doesn't add automatically.
-// KMM adds: kubelet-plugins, kubelet-plugins-registry, cdi (/var/run/cdi).
+// KMM auto-adds: kubelet-plugins, kubelet-plugins-registry, cdi (/var/run/cdi).
 func draExtraVolumes() []v1.Volume {
 	return []v1.Volume{
-		{Name: "etccdi", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/etc/cdi", Type: &hostPathDirOrCreate}}},
 		{Name: "sysfs", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/sys"}}},
 		{Name: "xpumdrundir", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/var/run/xpumd", Type: &hostPathDirOrCreate}}},
 	}
@@ -314,14 +312,12 @@ func (r *KMMReconciler) setDevicePlugin(mod *kmmv1beta1.Module, cp *v1alpha.Clus
 			VolumeMounts: []v1.VolumeMount{
 				{Name: "devfs", MountPath: "/dev/dri", ReadOnly: true},
 				{Name: "sysfsdrm", MountPath: "/sys/class/drm", ReadOnly: true},
-				{Name: "kubeletsockets", MountPath: "/var/lib/kubelet/device-plugins"},
 				{Name: "cdipath", MountPath: "/var/run/cdi"},
 			},
 		},
 		Volumes: []v1.Volume{
 			{Name: "devfs", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/dev/dri"}}},
 			{Name: "sysfsdrm", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/sys/class/drm"}}},
-			{Name: "kubeletsockets", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/var/lib/kubelet/device-plugins"}}},
 			{Name: "cdipath", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/var/run/cdi", Type: &hostPathDirOrCreate}}},
 		},
 	}
