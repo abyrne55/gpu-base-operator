@@ -200,6 +200,7 @@ func (r *KMMReconciler) setModuleLoader(mod *kmmv1beta1.Module, cp *v1alpha.Clus
 			},
 			ImagePullPolicy: v1.PullAlways,
 		},
+		ServiceAccountName: r.Opts.ModuleLoaderServiceAccountName,
 	}
 }
 

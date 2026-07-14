@@ -47,8 +47,9 @@ type ControllerOpts struct {
 	ReqName               string
 	Namespace             string
 	SecretName            string
-	DPServiceAccountName  string
-	DRAServiceAccountName string
+	DPServiceAccountName           string
+	DRAServiceAccountName          string
+	ModuleLoaderServiceAccountName string
 	RequeueDelay          time.Duration
 	DRAEnable             bool
 	KMMEnable             bool

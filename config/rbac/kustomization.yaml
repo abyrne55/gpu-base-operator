@@ -35,6 +35,11 @@ resources:
 - dp_scc.yaml
 - dp_scc_role.yaml
 - dp_scc_rolebinding.yaml
+# Module loader RBAC — ServiceAccount and OpenShift SCC for KMM module loader worker pods
+- module_loader_serviceaccount.yaml
+- module_loader_scc.yaml
+- module_loader_scc_role.yaml
+- module_loader_scc_rolebinding.yaml
 # DRA RBAC — ServiceAccount, ClusterRole, ClusterRoleBinding for KMM-managed DRA pods
 - dra_serviceaccount.yaml
 - dra_clusterrole.yaml

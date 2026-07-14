@@ -341,11 +341,17 @@ func main() {
 		draSAName = "intel-gpu-dra"
 	}
 
+	moduleLoaderSAName := os.Getenv("MODULE_LOADER_SERVICE_ACCOUNT_NAME")
+	if moduleLoaderSAName == "" {
+		moduleLoaderSAName = "intel-gpu-module-loader"
+	}
+
 	copts := controller.ControllerOpts{
-		Namespace:             ns,
-		SecretName:            secret,
-		DPServiceAccountName:  dpSAName,
-		DRAServiceAccountName: draSAName,
+		Namespace:                      ns,
+		SecretName:                     secret,
+		DPServiceAccountName:           dpSAName,
+		DRAServiceAccountName:          draSAName,
+		ModuleLoaderServiceAccountName: moduleLoaderSAName,
 		RequeueDelay:          time.Second * 5,
 		DRAEnable:             features[draCluster],
 		KMMEnable:             features[kmmCluster],
