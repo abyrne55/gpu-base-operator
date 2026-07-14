@@ -160,9 +160,6 @@ type KernelModuleSpec struct {
 
 	// Image is the container image containing the OOT driver module.
 	Image string `json:"image"`
-
-	// Version is the OOT driver version string.
-	Version string `json:"version"`
 }
 
 // ClusterPolicyStatus defines the observed state of ClusterPolicy.

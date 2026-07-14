@@ -149,13 +149,9 @@ spec:
                   moduleName:
                     description: ModuleName is the kernel module to load, e.g. "xe".
                     type: string
-                  version:
-                    description: Version is the OOT driver version string.
-                    type: string
                 required:
                 - image
                 - moduleName
-                - version
                 type: object
               kueue:
                 description: Define Kueue queues

@@ -290,7 +290,6 @@ var _ = Describe("KMM Controller", func() {
 					KernelModule: &v1alpha.KernelModuleSpec{
 						ModuleName: "xe",
 						Image:      "registry.example.com/xe-driver:1.0",
-						Version:    "1.0.0",
 					},
 					DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
 						Image: "ghcr.io/intel/gpu-dra:v0.11.0",
@@ -322,7 +321,6 @@ var _ = Describe("KMM Controller", func() {
 			Expect(mod.Spec.ModuleLoader.Container.KernelMappings).To(HaveLen(1))
 			Expect(mod.Spec.ModuleLoader.Container.KernelMappings[0].ContainerImage).To(Equal("registry.example.com/xe-driver:1.0"))
 			Expect(mod.Spec.ModuleLoader.Container.KernelMappings[0].InTreeModulesToRemove).To(ContainElement("xe"))
-			Expect(mod.Spec.ModuleLoader.Container.Version).To(Equal("1.0.0"))
 		})
 	})
 
