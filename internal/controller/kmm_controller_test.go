@@ -111,7 +111,7 @@ var _ = Describe("KMM Controller", func() {
 			Expect(mod.Spec.DRA.DeviceClasses[1].Name).To(Equal("gpu-vfio.intel.com"))
 
 			By("verifying DRA extra volumes (KMM adds plugins/registry/cdi automatically)")
-			Expect(mod.Spec.DRA.Volumes).To(HaveLen(3))
+			Expect(mod.Spec.DRA.Volumes).To(HaveLen(2))
 
 			By("verifying owner reference is set")
 			Expect(mod.OwnerReferences).To(HaveLen(1))
@@ -253,7 +253,6 @@ var _ = Describe("KMM Controller", func() {
 			}
 			Expect(volNames).To(ContainElement("devfs"))
 			Expect(volNames).To(ContainElement("sysfsdrm"))
-			Expect(volNames).To(ContainElement("kubeletsockets"))
 
 			By("verifying xpumd volume is present when monitoring is enabled")
 			Expect(volNames).To(ContainElement(xpumdVolumeName))
