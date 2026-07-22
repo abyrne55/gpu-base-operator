@@ -1,7 +1,10 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: resourceslices-policy-dra-kubelet-plugin-gpu
+  name: {{ .Release.Name }}-dra-resourceslices
+  labels:
+    app.kubernetes.io/name: intel-gpu-base-operator
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
 spec:
   failurePolicy: Fail
   matchConstraints:
@@ -13,7 +16,7 @@ spec:
   matchConditions:
   - name: isRestrictedUser
     expression: >-
-      request.userInfo.username == "system:serviceaccount:intel-gpu-base-operator:gpu-policy-sample-gpu-dra"
+      request.userInfo.username == "system:serviceaccount:{{ .Release.Namespace }}:{{ .Values.dra.serviceAccountName }}"
   variables:
   - name: userNodeName
     expression: >-

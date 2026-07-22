@@ -199,19 +199,7 @@ func processContainerResources(ds *apps.DaemonSet, spec *v1alpha.ClusterPolicy, 
 }
 
 func processNodeSelectors(ds *apps.DaemonSet, spec *v1alpha.ClusterPolicy) {
-	ds.Spec.Template.Spec.NodeSelector = map[string]string{
-		"kubernetes.io/arch": "amd64",
-	}
-
-	if len(spec.Spec.NodeSelector) > 0 {
-		for k, v := range spec.Spec.NodeSelector {
-			ds.Spec.Template.Spec.NodeSelector[k] = v
-		}
-	}
-
-	if spec.Spec.UseNFDLabeling {
-		ds.Spec.Template.Spec.NodeSelector["intel.feature.node.kubernetes.io/gpu"] = trueValue
-	}
+	ds.Spec.Template.Spec.NodeSelector = gpuNodeSelector(spec)
 }
 
 // Convert the integer based log level to a string based log level for the OTel config.

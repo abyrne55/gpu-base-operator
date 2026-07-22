@@ -6,6 +6,7 @@ require (
 	github.com/distribution/reference v0.6.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/go-containerregistry v0.21.7
+	github.com/kubernetes-sigs/kernel-module-management v0.0.0-20260707212627-01f137c54ff8
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.92.1
@@ -16,7 +17,7 @@ require (
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/utils v0.0.0-20260507154919-ff6756f316d2
 	sigs.k8s.io/controller-runtime v0.24.1
-	sigs.k8s.io/kueue v0.18.2
+	sigs.k8s.io/kueue v0.18.3
 	sigs.k8s.io/node-feature-discovery/api/nfd v0.18.3
 	sigs.k8s.io/yaml v1.6.0
 )
@@ -104,7 +105,7 @@ require (
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260128011058-8636f8732409 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260319201613-d00831a3d3e7 // indirect
-	google.golang.org/grpc v1.79.3 // indirect
+	google.golang.org/grpc v1.80.0 // indirect
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
