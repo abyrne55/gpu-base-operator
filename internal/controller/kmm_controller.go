@@ -186,22 +186,76 @@ func (r *KMMReconciler) setModuleLoader(mod *kmmv1beta1.Module, cp *v1alpha.Clus
 
 	km := cp.Spec.KernelModule
 
-	mod.Spec.ModuleLoader = &kmmv1beta1.ModuleLoaderSpec{
-		Container: kmmv1beta1.ModuleLoaderContainerSpec{
-			Modprobe: kmmv1beta1.ModprobeSpec{
-				ModuleName: km.ModuleName,
-			},
-			KernelMappings: []kmmv1beta1.KernelMapping{
-				{
-					Regexp:                "^.+$",
-					ContainerImage:        km.Image,
-					InTreeModulesToRemove: []string{km.ModuleName},
-				},
-			},
-			ImagePullPolicy: v1.PullAlways,
+	container := kmmv1beta1.ModuleLoaderContainerSpec{
+		Modprobe: kmmv1beta1.ModprobeSpec{
+			ModuleName:          km.ModuleName,
+			FirmwarePath:        km.FirmwarePath,
+			ModulesLoadingOrder: km.ModulesLoadingOrder,
 		},
+		ContainerImage:        km.Image,
+		InTreeModulesToRemove: dedupeStrings(append([]string{km.ModuleName}, km.InTreeModulesToRemove...)),
+		ImagePullPolicy:       v1.PullAlways,
+		RegistryTLS: kmmv1beta1.TLSOptions{
+			InsecureSkipTLSVerify: km.SkipTLSVerify,
+		},
+	}
+
+	if len(km.KernelMappings) == 0 {
+		container.KernelMappings = []kmmv1beta1.KernelMapping{
+			{Regexp: "^.+$"},
+		}
+	} else {
+		mappings := make([]kmmv1beta1.KernelMapping, 0, len(km.KernelMappings))
+		for _, m := range km.KernelMappings {
+			mapping := kmmv1beta1.KernelMapping{
+				Regexp:                m.Regexp,
+				Literal:               m.Literal,
+				ContainerImage:        m.ContainerImage,
+				InTreeModulesToRemove: m.InTreeModulesToRemove,
+			}
+			if m.Build != nil {
+				mapping.Build = convertBuildSpec(m.Build)
+			}
+			mappings = append(mappings, mapping)
+		}
+		container.KernelMappings = mappings
+	}
+
+	mod.Spec.ModuleLoader = &kmmv1beta1.ModuleLoaderSpec{
+		Container:          container,
 		ServiceAccountName: r.Opts.ModuleLoaderServiceAccountName,
 	}
+}
+
+func convertBuildSpec(src *v1alpha.KernelModuleBuildSpec) *kmmv1beta1.Build {
+	build := &kmmv1beta1.Build{
+		DockerfileConfigMap: &v1.LocalObjectReference{Name: src.DockerfileConfigMap.Name},
+		Secrets:             src.Secrets,
+	}
+
+	if len(src.BuildArgs) > 0 {
+		args := make([]kmmv1beta1.BuildArg, len(src.BuildArgs))
+		for i, a := range src.BuildArgs {
+			args[i] = kmmv1beta1.BuildArg{Name: a.Name, Value: a.Value}
+		}
+		build.BuildArgs = args
+	}
+
+	return build
+}
+
+func dedupeStrings(s []string) []string {
+	seen := make(map[string]bool, len(s))
+	result := make([]string, 0, len(s))
+
+	for _, v := range s {
+		if !seen[v] {
+			seen[v] = true
+			result = append(result, v)
+		}
+	}
+
+	return result
 }
 
 func (r *KMMReconciler) setDRA(mod *kmmv1beta1.Module, cp *v1alpha.ClusterPolicy) {
@@ -402,5 +456,12 @@ func (r *KMMReconciler) updateStatus(cp *v1alpha.ClusterPolicy, mod *kmmv1beta1.
 		dsStatus := mod.Status.DevicePlugin
 		cp.Status.DevicePluginStatus = fmt.Sprintf("%d/%d", dsStatus.AvailableNumber, dsStatus.DesiredNumber)
 		cp.Status.DRAStatus = notAvailableStatus
+	}
+
+	if cp.Spec.KernelModule != nil {
+		mlStatus := mod.Status.ModuleLoader
+		cp.Status.KMMStatus = fmt.Sprintf("%d/%d", mlStatus.AvailableNumber, mlStatus.DesiredNumber)
+	} else {
+		cp.Status.KMMStatus = notAvailableStatus
 	}
 }

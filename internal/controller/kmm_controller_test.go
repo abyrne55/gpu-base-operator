@@ -317,11 +317,260 @@ var _ = Describe("KMM Controller", func() {
 
 			Expect(mod.Spec.ModuleLoader).NotTo(BeNil())
 			Expect(mod.Spec.ModuleLoader.Container.Modprobe.ModuleName).To(Equal("xe"))
+			Expect(mod.Spec.ModuleLoader.Container.ContainerImage).To(Equal("registry.example.com/xe-driver:1.0"))
+			Expect(mod.Spec.ModuleLoader.Container.InTreeModulesToRemove).To(ContainElement("xe"))
 			Expect(mod.Spec.ModuleLoader.Container.KernelMappings).To(HaveLen(1))
-			Expect(mod.Spec.ModuleLoader.Container.KernelMappings[0].ContainerImage).To(Equal("registry.example.com/xe-driver:1.0"))
-			Expect(mod.Spec.ModuleLoader.Container.KernelMappings[0].InTreeModulesToRemove).To(ContainElement("xe"))
+			Expect(mod.Spec.ModuleLoader.Container.KernelMappings[0].Regexp).To(Equal("^.+$"))
 		})
 	})
+
+	DescribeTable("expanded KernelModule fields", func(
+		ns string,
+		cpSpec v1alpha.ClusterPolicySpec,
+		assertFn func(mod *kmmv1beta1.Module, cp *v1alpha.ClusterPolicy),
+	) {
+		ctx := context.Background()
+		resName := ns
+
+		Expect(k8sClient.Create(ctx, &v1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{Name: ns},
+		})).To(Succeed())
+
+		cp := &v1alpha.ClusterPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: resName},
+			Spec:       cpSpec,
+		}
+		Expect(k8sClient.Create(ctx, cp)).To(Succeed())
+
+		reconciler := &ClusterPolicyReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+			Opts: ControllerOpts{
+				Namespace:             ns,
+				DRAEnable:             true,
+				KMMEnable:             true,
+				DRAServiceAccountName: "intel-gpu-dra",
+			},
+		}
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: resName},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		mod := &kmmv1beta1.Module{}
+		modKey := types.NamespacedName{Name: resName + kmmModuleSuffix, Namespace: ns}
+		Expect(k8sClient.Get(ctx, modKey, mod)).To(Succeed())
+
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: resName}, cp)).To(Succeed())
+
+		assertFn(mod, cp)
+	},
+		Entry("should configure ModuleLoader with multiple kernel mappings",
+			"kmm-exp-multi",
+			v1alpha.ClusterPolicySpec{
+				ResourceRegistration: "dra",
+				KernelModule: &v1alpha.KernelModuleSpec{
+					ModuleName: "xe",
+					KernelMappings: []v1alpha.KernelMappingSpec{
+						{Regexp: "^5\\.14\\.0-.*\\.el9", ContainerImage: "registry.example.com/xe-rhel9:1.0"},
+						{Regexp: "^6\\.12\\..*", ContainerImage: "registry.example.com/xe-rhel10:1.0"},
+					},
+				},
+				DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
+					Image: "ghcr.io/intel/gpu-dra:v0.11.0",
+				},
+			},
+			func(mod *kmmv1beta1.Module, _ *v1alpha.ClusterPolicy) {
+				Expect(mod.Spec.ModuleLoader.Container.KernelMappings).To(HaveLen(2))
+				Expect(mod.Spec.ModuleLoader.Container.KernelMappings[0].Regexp).To(Equal("^5\\.14\\.0-.*\\.el9"))
+				Expect(mod.Spec.ModuleLoader.Container.KernelMappings[0].ContainerImage).To(Equal("registry.example.com/xe-rhel9:1.0"))
+				Expect(mod.Spec.ModuleLoader.Container.KernelMappings[1].Regexp).To(Equal("^6\\.12\\..*"))
+				Expect(mod.Spec.ModuleLoader.Container.KernelMappings[1].ContainerImage).To(Equal("registry.example.com/xe-rhel10:1.0"))
+				Expect(mod.Spec.ModuleLoader.Container.ContainerImage).To(BeEmpty())
+			},
+		),
+		Entry("should use Image as fallback when mapping omits ContainerImage",
+			"kmm-exp-fallback",
+			v1alpha.ClusterPolicySpec{
+				ResourceRegistration: "dra",
+				KernelModule: &v1alpha.KernelModuleSpec{
+					ModuleName: "xe",
+					Image:      "registry.example.com/xe-driver:1.0",
+					KernelMappings: []v1alpha.KernelMappingSpec{
+						{Regexp: "^5\\.14\\..*"},
+					},
+				},
+				DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
+					Image: "ghcr.io/intel/gpu-dra:v0.11.0",
+				},
+			},
+			func(mod *kmmv1beta1.Module, _ *v1alpha.ClusterPolicy) {
+				Expect(mod.Spec.ModuleLoader.Container.ContainerImage).To(Equal("registry.example.com/xe-driver:1.0"))
+				Expect(mod.Spec.ModuleLoader.Container.KernelMappings[0].ContainerImage).To(BeEmpty())
+			},
+		),
+		Entry("should configure Build on kernel mapping",
+			"kmm-exp-build",
+			v1alpha.ClusterPolicySpec{
+				ResourceRegistration: "dra",
+				KernelModule: &v1alpha.KernelModuleSpec{
+					ModuleName: "xe",
+					KernelMappings: []v1alpha.KernelMappingSpec{
+						{
+							Regexp: "^5\\.14\\..*",
+							Build: &v1alpha.KernelModuleBuildSpec{
+								DockerfileConfigMap: v1.LocalObjectReference{Name: "xe-dockerfile"},
+								BuildArgs:           []v1alpha.BuildArg{{Name: "XE_TAG", Value: "v1.0"}},
+								Secrets:             []v1.LocalObjectReference{{Name: "private-repo"}},
+							},
+						},
+					},
+				},
+				DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
+					Image: "ghcr.io/intel/gpu-dra:v0.11.0",
+				},
+			},
+			func(mod *kmmv1beta1.Module, _ *v1alpha.ClusterPolicy) {
+				kmmBuild := mod.Spec.ModuleLoader.Container.KernelMappings[0].Build
+				Expect(kmmBuild).NotTo(BeNil())
+				Expect(kmmBuild.DockerfileConfigMap).NotTo(BeNil())
+				Expect(kmmBuild.DockerfileConfigMap.Name).To(Equal("xe-dockerfile"))
+				Expect(kmmBuild.BuildArgs).To(HaveLen(1))
+				Expect(kmmBuild.BuildArgs[0].Name).To(Equal("XE_TAG"))
+				Expect(kmmBuild.BuildArgs[0].Value).To(Equal("v1.0"))
+				Expect(kmmBuild.Secrets).To(HaveLen(1))
+				Expect(kmmBuild.Secrets[0].Name).To(Equal("private-repo"))
+			},
+		),
+		Entry("should propagate FirmwarePath to ModprobeSpec",
+			"kmm-exp-firmware",
+			v1alpha.ClusterPolicySpec{
+				ResourceRegistration: "dra",
+				KernelModule: &v1alpha.KernelModuleSpec{
+					ModuleName:   "xe",
+					Image:        "registry.example.com/xe-driver:1.0",
+					FirmwarePath: "/opt/lib/firmware/xe",
+				},
+				DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
+					Image: "ghcr.io/intel/gpu-dra:v0.11.0",
+				},
+			},
+			func(mod *kmmv1beta1.Module, _ *v1alpha.ClusterPolicy) {
+				Expect(mod.Spec.ModuleLoader.Container.Modprobe.FirmwarePath).To(Equal("/opt/lib/firmware/xe"))
+			},
+		),
+		Entry("should propagate ModulesLoadingOrder to ModprobeSpec",
+			"kmm-exp-loadorder",
+			v1alpha.ClusterPolicySpec{
+				ResourceRegistration: "dra",
+				KernelModule: &v1alpha.KernelModuleSpec{
+					ModuleName:          "xe",
+					Image:               "registry.example.com/xe-driver:1.0",
+					ModulesLoadingOrder: []string{"xe", "drm_buddy", "drm_ttm_helper"},
+				},
+				DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
+					Image: "ghcr.io/intel/gpu-dra:v0.11.0",
+				},
+			},
+			func(mod *kmmv1beta1.Module, _ *v1alpha.ClusterPolicy) {
+				Expect(mod.Spec.ModuleLoader.Container.Modprobe.ModulesLoadingOrder).To(Equal([]string{"xe", "drm_buddy", "drm_ttm_helper"}))
+			},
+		),
+		Entry("should set SkipTLSVerify on RegistryTLS",
+			"kmm-exp-tls",
+			v1alpha.ClusterPolicySpec{
+				ResourceRegistration: "dra",
+				KernelModule: &v1alpha.KernelModuleSpec{
+					ModuleName:    "xe",
+					Image:         "registry.example.com/xe-driver:1.0",
+					SkipTLSVerify: true,
+				},
+				DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
+					Image: "ghcr.io/intel/gpu-dra:v0.11.0",
+				},
+			},
+			func(mod *kmmv1beta1.Module, _ *v1alpha.ClusterPolicy) {
+				Expect(mod.Spec.ModuleLoader.Container.RegistryTLS.InsecureSkipTLSVerify).To(BeTrue())
+			},
+		),
+		Entry("should merge InTreeModulesToRemove with ModuleName",
+			"kmm-exp-intree",
+			v1alpha.ClusterPolicySpec{
+				ResourceRegistration: "dra",
+				KernelModule: &v1alpha.KernelModuleSpec{
+					ModuleName:            "xe",
+					Image:                 "registry.example.com/xe-driver:1.0",
+					InTreeModulesToRemove: []string{"i915"},
+				},
+				DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
+					Image: "ghcr.io/intel/gpu-dra:v0.11.0",
+				},
+			},
+			func(mod *kmmv1beta1.Module, _ *v1alpha.ClusterPolicy) {
+				Expect(mod.Spec.ModuleLoader.Container.InTreeModulesToRemove).To(ContainElement("xe"))
+				Expect(mod.Spec.ModuleLoader.Container.InTreeModulesToRemove).To(ContainElement("i915"))
+			},
+		),
+		Entry("should deduplicate InTreeModulesToRemove",
+			"kmm-exp-dedup",
+			v1alpha.ClusterPolicySpec{
+				ResourceRegistration: "dra",
+				KernelModule: &v1alpha.KernelModuleSpec{
+					ModuleName:            "xe",
+					Image:                 "registry.example.com/xe-driver:1.0",
+					InTreeModulesToRemove: []string{"xe", "i915"},
+				},
+				DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
+					Image: "ghcr.io/intel/gpu-dra:v0.11.0",
+				},
+			},
+			func(mod *kmmv1beta1.Module, _ *v1alpha.ClusterPolicy) {
+				xeCount := 0
+				for _, m := range mod.Spec.ModuleLoader.Container.InTreeModulesToRemove {
+					if m == "xe" {
+						xeCount++
+					}
+				}
+				Expect(xeCount).To(Equal(1))
+				Expect(mod.Spec.ModuleLoader.Container.InTreeModulesToRemove).To(ContainElement("i915"))
+			},
+		),
+		Entry("should set per-mapping InTreeModulesToRemove override",
+			"kmm-exp-permapping",
+			v1alpha.ClusterPolicySpec{
+				ResourceRegistration: "dra",
+				KernelModule: &v1alpha.KernelModuleSpec{
+					ModuleName: "xe",
+					KernelMappings: []v1alpha.KernelMappingSpec{
+						{
+							Regexp:                "^5\\.14\\..*",
+							ContainerImage:        "registry.example.com/xe:1.0",
+							InTreeModulesToRemove: []string{"old_xe"},
+						},
+					},
+				},
+				DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
+					Image: "ghcr.io/intel/gpu-dra:v0.11.0",
+				},
+			},
+			func(mod *kmmv1beta1.Module, _ *v1alpha.ClusterPolicy) {
+				Expect(mod.Spec.ModuleLoader.Container.KernelMappings[0].InTreeModulesToRemove).To(Equal([]string{"old_xe"}))
+				Expect(mod.Spec.ModuleLoader.Container.InTreeModulesToRemove).To(ContainElement("xe"))
+			},
+		),
+		Entry("should set KMMStatus to N/A when KernelModule is nil",
+			"kmm-exp-nkmm",
+			v1alpha.ClusterPolicySpec{
+				ResourceRegistration: "dra",
+				DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
+					Image: "ghcr.io/intel/gpu-dra:v0.11.0",
+				},
+			},
+			func(_ *kmmv1beta1.Module, cp *v1alpha.ClusterPolicy) {
+				Expect(cp.Status.KMMStatus).To(Equal("N/A"))
+			},
+		),
+	)
 
 	Context("When deleting a KMM Module", func() {
 		const (

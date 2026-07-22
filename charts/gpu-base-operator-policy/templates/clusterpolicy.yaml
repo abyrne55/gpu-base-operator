@@ -65,8 +65,56 @@ spec:
 {{- if .Values.kernelModule }}
   kernelModule:
     moduleName: {{ .Values.kernelModule.moduleName }}
+    {{- if .Values.kernelModule.image }}
     image: {{ .Values.kernelModule.image }}
-    version: {{ .Values.kernelModule.version }}
+    {{- end }}
+    {{- if .Values.kernelModule.kernelMappings }}
+    kernelMappings:
+    {{- range .Values.kernelModule.kernelMappings }}
+      - {{- if .regexp }}
+        regexp: {{ .regexp | quote }}
+        {{- end }}
+        {{- if .literal }}
+        literal: {{ .literal | quote }}
+        {{- end }}
+        {{- if .containerImage }}
+        containerImage: {{ .containerImage }}
+        {{- end }}
+        {{- if .build }}
+        build:
+          dockerfileConfigMap:
+            name: {{ .build.dockerfileConfigMap.name }}
+          {{- if .build.buildArgs }}
+          buildArgs:
+          {{- range .build.buildArgs }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+          {{- end }}
+          {{- end }}
+          {{- if .build.secrets }}
+          secrets:
+          {{- range .build.secrets }}
+            - name: {{ .name }}
+          {{- end }}
+          {{- end }}
+        {{- end }}
+        {{- if .inTreeModulesToRemove }}
+        inTreeModulesToRemove: {{ toYaml .inTreeModulesToRemove | nindent 10 }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- if .Values.kernelModule.inTreeModulesToRemove }}
+    inTreeModulesToRemove: {{ toYaml .Values.kernelModule.inTreeModulesToRemove | nindent 6 }}
+    {{- end }}
+    {{- if .Values.kernelModule.modulesLoadingOrder }}
+    modulesLoadingOrder: {{ toYaml .Values.kernelModule.modulesLoadingOrder | nindent 6 }}
+    {{- end }}
+    {{- if .Values.kernelModule.firmwarePath }}
+    firmwarePath: {{ .Values.kernelModule.firmwarePath }}
+    {{- end }}
+    {{- if .Values.kernelModule.skipTLSVerify }}
+    skipTLSVerify: {{ .Values.kernelModule.skipTLSVerify }}
+    {{- end }}
 {{- end }}
 
 {{- if .Values.pullSecret }}

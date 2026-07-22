@@ -387,6 +387,228 @@ var _ = Describe("ClusterPolicy Webhook", func() {
 			})
 		})
 
+		Context("kernelModule validation", func() {
+			It("accepts nil kernelModule (in-tree mode)", func() {
+				obj.Spec.KernelModule = nil
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("accepts valid kernelModule with moduleName + image only", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+					Image:      "registry.example.com/xe-driver:1.0",
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("rejects kernelModule with empty moduleName", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					Image: "registry.example.com/xe-driver:1.0",
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("moduleName is required"))
+			})
+
+			It("rejects kernelModule without image when kernelMappings is empty", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("image is required when kernelMappings is empty"))
+			})
+
+			It("accepts kernelMappings with each mapping having its own containerImage", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+					KernelMappings: []KernelMappingSpec{
+						{Regexp: "^5\\.14\\..*", ContainerImage: "registry.example.com/xe-rhel9:1.0"},
+						{Regexp: "^6\\.12\\..*", ContainerImage: "registry.example.com/xe-rhel10:1.0"},
+					},
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("accepts image as fallback when mapping omits containerImage", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+					Image:      "registry.example.com/xe-driver:1.0",
+					KernelMappings: []KernelMappingSpec{
+						{Regexp: "^5\\.14\\..*"},
+					},
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("rejects mapping with neither containerImage, build, nor parent image", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+					KernelMappings: []KernelMappingSpec{
+						{Regexp: "^5\\.14\\..*"},
+					},
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("one of containerImage, build, or parent-level image must be set"))
+			})
+
+			It("rejects mapping with both regexp and literal set", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+					KernelMappings: []KernelMappingSpec{
+						{Regexp: "^5\\.14\\..*", Literal: "5.14.0-687.el9.x86_64", ContainerImage: "registry.example.com/xe:1.0"},
+					},
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("regexp and literal are mutually exclusive"))
+			})
+
+			It("rejects mapping with neither regexp nor literal set", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+					KernelMappings: []KernelMappingSpec{
+						{ContainerImage: "registry.example.com/xe:1.0"},
+					},
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("exactly one of regexp or literal must be set"))
+			})
+
+			It("rejects mapping with invalid regexp", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+					KernelMappings: []KernelMappingSpec{
+						{Regexp: "[invalid", ContainerImage: "registry.example.com/xe:1.0"},
+					},
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("invalid regular expression"))
+			})
+
+			It("rejects image without tag or digest", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+					Image:      "registry.example.com/xe-driver",
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("must include an explicit tag or digest"))
+			})
+
+			It("rejects containerImage without tag or digest", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+					KernelMappings: []KernelMappingSpec{
+						{Regexp: "^5\\.14\\..*", ContainerImage: "registry.example.com/xe-driver"},
+					},
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("must include an explicit tag or digest"))
+			})
+
+			It("accepts image with tag", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+					Image:      "registry.example.com/xe-driver:1.0",
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("accepts image with digest", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+					Image:      "registry.example.com/xe-driver@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("accepts valid build spec with dockerfileConfigMap", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+					KernelMappings: []KernelMappingSpec{
+						{
+							Regexp: "^5\\.14\\..*",
+							Build: &KernelModuleBuildSpec{
+								DockerfileConfigMap: v1.LocalObjectReference{Name: "xe-dockerfile"},
+								BuildArgs:           []BuildArg{{Name: "XE_TAG", Value: "v1.0"}},
+							},
+						},
+					},
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("rejects build spec with empty dockerfileConfigMap name", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName: "xe",
+					KernelMappings: []KernelMappingSpec{
+						{
+							Regexp: "^5\\.14\\..*",
+							Build:  &KernelModuleBuildSpec{},
+						},
+					},
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("dockerfileConfigMap.name is required"))
+			})
+
+			It("accepts valid modulesLoadingOrder with moduleName first", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName:          "xe",
+					Image:               "registry.example.com/xe-driver:1.0",
+					ModulesLoadingOrder: []string{"xe", "drm_buddy"},
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("rejects modulesLoadingOrder with fewer than 2 entries", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName:          "xe",
+					Image:               "registry.example.com/xe-driver:1.0",
+					ModulesLoadingOrder: []string{"xe"},
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("at least 2 entries"))
+			})
+
+			It("rejects modulesLoadingOrder where first entry is not moduleName", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName:          "xe",
+					Image:               "registry.example.com/xe-driver:1.0",
+					ModulesLoadingOrder: []string{"drm_buddy", "xe"},
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("must be moduleName"))
+			})
+
+			It("rejects modulesLoadingOrder with duplicate entries", func() {
+				obj.Spec.KernelModule = &KernelModuleSpec{
+					ModuleName:          "xe",
+					Image:               "registry.example.com/xe-driver:1.0",
+					ModulesLoadingOrder: []string{"xe", "drm_buddy", "drm_buddy"},
+				}
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("duplicate entry"))
+			})
+		})
+
 		Context("spec warning for Levelzero", func() {
 			It("emits a warning when levelzero image is set in DP mode", func() {
 				obj.Spec.ResourceRegistration = dpName

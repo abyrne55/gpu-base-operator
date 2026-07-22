@@ -352,10 +352,10 @@ func main() {
 		DPServiceAccountName:           dpSAName,
 		DRAServiceAccountName:          draSAName,
 		ModuleLoaderServiceAccountName: moduleLoaderSAName,
-		RequeueDelay:          time.Second * 5,
-		DRAEnable:             features[draCluster],
-		KMMEnable:             features[kmmCluster],
-		OpenShift:             features[openshiftCluster],
+		RequeueDelay:                   time.Second * 5,
+		DRAEnable:                      features[draCluster],
+		KMMEnable:                      features[kmmCluster],
+		OpenShift:                      features[openshiftCluster],
 	}
 
 	if err := (&controller.ClusterPolicyReconciler{

@@ -44,16 +44,16 @@ type ClusterPolicyReconciler struct {
 }
 
 type ControllerOpts struct {
-	ReqName               string
-	Namespace             string
-	SecretName            string
+	ReqName                        string
+	Namespace                      string
+	SecretName                     string
 	DPServiceAccountName           string
 	DRAServiceAccountName          string
 	ModuleLoaderServiceAccountName string
-	RequeueDelay          time.Duration
-	DRAEnable             bool
-	KMMEnable             bool
-	OpenShift             bool
+	RequeueDelay                   time.Duration
+	DRAEnable                      bool
+	KMMEnable                      bool
+	OpenShift                      bool
 }
 
 type requeueReconcileErr struct {
