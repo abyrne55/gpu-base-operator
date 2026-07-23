@@ -24,6 +24,9 @@ spec:
     - jsonPath: .status.xpuManagerStatus
       name: XPU
       type: string
+    - jsonPath: .status.kmmStatus
+      name: KMM
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -135,6 +138,147 @@ spec:
                     maximum: 130
                     minimum: 1
                     type: integer
+                type: object
+              kernelModule:
+                description: |-
+                  KernelModule configures out-of-tree kernel module loading via KMM.
+                  When set, KMM loads the specified OOT driver module on each node.
+                  When nil, the in-tree kernel driver is used.
+                properties:
+                  firmwarePath:
+                    description: FirmwarePath is the in-container path where firmware
+                      files are stored.
+                    type: string
+                  image:
+                    description: |-
+                      Image is the default container image for the OOT driver module.
+                      When KernelMappings is empty, generates a single wildcard mapping.
+                      When KernelMappings is non-empty, serves as the KMM-level fallback
+                      for mappings that omit ContainerImage.
+                    type: string
+                  inTreeModulesToRemove:
+                    description: |-
+                      InTreeModulesToRemove lists in-tree modules to unload before
+                      inserting the OOT module. ModuleName is always included implicitly.
+                    items:
+                      type: string
+                    type: array
+                  kernelMappings:
+                    description: |-
+                      KernelMappings maps kernel version patterns to container images or
+                      build specifications. Translates directly to KMM KernelMapping
+                      objects. When empty, a single wildcard mapping (regexp "^.+$") is
+                      generated from Image.
+                    items:
+                      description: |-
+                        KernelMappingSpec maps a kernel version pattern to a container image
+                        or build specification.
+                      properties:
+                        build:
+                          description: |-
+                            Build configures in-cluster building of the driver image via KMM.
+                            When set, KMM builds the image if it doesn't exist in the registry.
+                          properties:
+                            buildArgs:
+                              description: BuildArgs are key-value pairs passed to
+                                the image builder.
+                              items:
+                                description: BuildArg is a key-value pair passed as
+                                  a build argument.
+                                properties:
+                                  name:
+                                    type: string
+                                  value:
+                                    type: string
+                                required:
+                                - name
+                                - value
+                                type: object
+                              type: array
+                            dockerfileConfigMap:
+                              description: DockerfileConfigMap references a ConfigMap
+                                containing the Dockerfile.
+                              properties:
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            secrets:
+                              description: |-
+                                Secrets are made available during the build (e.g., for private
+                                source repos). Not for registry auth -- use pullSecret on
+                                ClusterPolicySpec.
+                              items:
+                                description: |-
+                                  LocalObjectReference contains enough information to let you locate the
+                                  referenced object inside the same namespace.
+                                properties:
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                type: object
+                                x-kubernetes-map-type: atomic
+                              type: array
+                          required:
+                          - dockerfileConfigMap
+                          type: object
+                        containerImage:
+                          description: |-
+                            ContainerImage is the full image reference for this kernel version.
+                            Required when Build is nil and no parent-level Image is set.
+                          type: string
+                        inTreeModulesToRemove:
+                          description: |-
+                            InTreeModulesToRemove overrides the parent-level list for this
+                            specific kernel mapping.
+                          items:
+                            type: string
+                          type: array
+                        literal:
+                          description: |-
+                            Literal is an exact kernel version string to match.
+                            Exactly one of Regexp or Literal must be set.
+                          type: string
+                        regexp:
+                          description: |-
+                            Regexp is a regular expression matched against node kernel versions.
+                            Exactly one of Regexp or Literal must be set.
+                          type: string
+                      type: object
+                    type: array
+                  moduleName:
+                    description: |-
+                      ModuleName is the kernel module to load (e.g., "xe").
+                      Also used as the default InTreeModulesToRemove entry.
+                    type: string
+                  modulesLoadingOrder:
+                    description: |-
+                      ModulesLoadingOrder specifies softdep-style loading order for
+                      multi-module drivers. First element must be ModuleName; KMM loads
+                      in order and unloads in reverse. Must have >=2 entries if set.
+                    items:
+                      type: string
+                    type: array
+                  skipTLSVerify:
+                    description: |-
+                      SkipTLSVerify disables TLS certificate verification when pulling
+                      OOT driver images. For air-gapped or internal registries.
+                    type: boolean
+                required:
+                - moduleName
                 type: object
               kueue:
                 description: Define Kueue queues
@@ -289,6 +433,8 @@ spec:
                 items:
                   type: string
                 type: array
+              kmmStatus:
+                type: string
               xpuManagerStatus:
                 type: string
             type: object

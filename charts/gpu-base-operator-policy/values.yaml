@@ -35,6 +35,32 @@ kueue:
       - name: gpu-queue
         namespace: default
 
+# kernelModule:
+#   moduleName: xe
+#   image: registry.example.com/xe-driver:1.0
+#
+#   # Multi-kernel support:
+#   # kernelMappings:
+#   # - regexp: "^5\\.14\\.0-.*\\.el9.*\\.x86_64$"
+#   #   containerImage: registry.example.com/xe-driver-rhel9:1.0
+#   # - regexp: "^6\\.12\\..*"
+#   #   containerImage: registry.example.com/xe-driver-rhel10:1.0
+#   #
+#   # In-cluster build:
+#   # kernelMappings:
+#   # - regexp: "^5\\.14\\..*"
+#   #   build:
+#   #     dockerfileConfigMap:
+#   #       name: xe-dockerfile
+#   #     buildArgs:
+#   #     - name: XE_TAG
+#   #       value: v1.0
+#   #
+#   # inTreeModulesToRemove: ["i915"]
+#   # modulesLoadingOrder: ["xe", "drm_buddy", "drm_ttm_helper"]
+#   # firmwarePath: /opt/lib/firmware/xe
+#   # skipTLSVerify: false
+
 pullSecret: null
 nodeSelector: {}
 tolerations: []

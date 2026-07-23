@@ -30,4 +30,25 @@ resources:
 - clusterpolicy_admin_role.yaml
 - clusterpolicy_editor_role.yaml
 - clusterpolicy_viewer_role.yaml
+# DP RBAC — ServiceAccount and OpenShift SCC for KMM-managed DP pods (SCC is no-op on non-OpenShift)
+- dp_serviceaccount.yaml
+- dp_scc.yaml
+- dp_scc_role.yaml
+- dp_scc_rolebinding.yaml
+# Module loader RBAC — ServiceAccount and OpenShift SCC for KMM module loader worker pods
+- module_loader_serviceaccount.yaml
+- module_loader_scc.yaml
+- module_loader_scc_role.yaml
+- module_loader_scc_rolebinding.yaml
+# DRA RBAC — ServiceAccount, ClusterRole, ClusterRoleBinding for KMM-managed DRA pods
+- dra_serviceaccount.yaml
+- dra_clusterrole.yaml
+- dra_clusterrolebinding.yaml
+# DRA SCC — OpenShift SecurityContextConstraints (no-op on non-OpenShift)
+- dra_scc.yaml
+- dra_scc_role.yaml
+- dra_scc_rolebinding.yaml
+# DRA admission policy — restricts ResourceSlice modifications to the DRA SA's node
+- dra_admission_policy.yaml
+- dra_admission_policy_binding.yaml
 

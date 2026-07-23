@@ -19,6 +19,15 @@ operator:
       cpu: 100m
       memory: 256Mi
 
+dp:
+  serviceAccountName: intel-gpu-dp
+
+dra:
+  serviceAccountName: intel-gpu-dra
+
+openshift:
+  enabled: false
+
 privateRegistry:
   url: ""
   user: ""
