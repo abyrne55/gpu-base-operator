@@ -69,6 +69,12 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
+          - name: DP_SERVICE_ACCOUNT_NAME
+            value: intel-gpu-base-operator-intel-gpu-dp
+          - name: DRA_SERVICE_ACCOUNT_NAME
+            value: intel-gpu-base-operator-intel-gpu-dra
+          - name: MODULE_LOADER_SERVICE_ACCOUNT_NAME
+            value: intel-gpu-base-operator-intel-gpu-module-loader
         image: ghcr.io/intel/intel-gpu-base-operator:devel
         imagePullPolicy: IfNotPresent
         name: manager

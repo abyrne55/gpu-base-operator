@@ -1,7 +1,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: intel-gpu-resource-driver-role
+  name: intel-gpu-dra
+  labels:
+    app.kubernetes.io/name: intel-gpu-base-operator
 rules:
 - apiGroups: [""]
   resources: ["nodes"]

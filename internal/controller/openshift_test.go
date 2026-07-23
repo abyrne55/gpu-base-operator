@@ -34,26 +34,6 @@ var _ = Describe("OpenShift SCC helpers", func() {
 	ctx := context.Background()
 
 	Context("SCC builder functions", func() {
-		It("buildDevicePluginSCC sets correct fields", func() {
-			scc := buildDevicePluginSCC("dp-builder-test")
-
-			Expect(scc.GetName()).To(Equal("dp-builder-test"))
-			Expect(scc.GetKind()).To(Equal("SecurityContextConstraints"))
-			Expect(scc.GetAPIVersion()).To(Equal("security.openshift.io/v1"))
-			Expect(scc.Object["allowPrivilegedContainer"]).To(BeFalse())
-			Expect(scc.Object["allowPrivilegeEscalation"]).To(BeFalse())
-			Expect(scc.Object["allowHostDirVolumePlugin"]).To(BeTrue())
-			Expect(scc.Object["allowHostNetwork"]).To(BeFalse())
-
-			drops, ok := scc.Object["requiredDropCapabilities"].([]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(drops).To(ContainElement("ALL"))
-
-			vols, ok := scc.Object["volumes"].([]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(vols).To(ContainElements("hostPath", "emptyDir"))
-		})
-
 		It("buildXpuManagerSCC sets correct fields", func() {
 			scc := buildXpuManagerSCC("xpum-builder-test")
 
@@ -71,22 +51,6 @@ var _ = Describe("OpenShift SCC helpers", func() {
 			vols, ok := scc.Object["volumes"].([]interface{})
 			Expect(ok).To(BeTrue())
 			Expect(vols).To(ContainElements("hostPath", "configMap"))
-		})
-
-		It("buildDRASCC sets correct fields", func() {
-			scc := buildDRASCC("dra-builder-test")
-
-			Expect(scc.GetName()).To(Equal("dra-builder-test"))
-			Expect(scc.Object["allowPrivilegedContainer"]).To(BeFalse())
-			Expect(scc.Object["allowPrivilegeEscalation"]).To(BeFalse())
-
-			drops, ok := scc.Object["requiredDropCapabilities"].([]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(drops).To(ContainElement("ALL"))
-
-			vols, ok := scc.Object["volumes"].([]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(vols).To(ContainElements("hostPath", "projected"))
 		})
 
 		It("buildFWUpdateSCC sets correct fields", func() {
@@ -109,7 +73,7 @@ var _ = Describe("OpenShift SCC helpers", func() {
 	Context("ensureSCC", func() {
 		It("creates SCC when not found and is idempotent", func() {
 			name := "test-ensure-scc-create"
-			scc := buildDevicePluginSCC(name)
+			scc := buildXpuManagerSCC(name)
 
 			By("first call creates the SCC")
 			Expect(ensureSCC(ctx, k8sClient, scc)).To(Succeed())
@@ -120,7 +84,7 @@ var _ = Describe("OpenShift SCC helpers", func() {
 			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: name}, existing)).To(Succeed())
 
 			By("second call is idempotent")
-			Expect(ensureSCC(ctx, k8sClient, buildDevicePluginSCC(name))).To(Succeed())
+			Expect(ensureSCC(ctx, k8sClient, buildXpuManagerSCC(name))).To(Succeed())
 
 			DeferCleanup(func() {
 				scc := &unstructured.Unstructured{}
@@ -212,7 +176,7 @@ var _ = Describe("OpenShift SCC helpers", func() {
 			saName := "test-delete-sa"
 
 			By("creating the resources")
-			Expect(ensureSCC(ctx, k8sClient, buildDevicePluginSCC(sccName))).To(Succeed())
+			Expect(ensureSCC(ctx, k8sClient, buildXpuManagerSCC(sccName))).To(Succeed())
 			Expect(createSCCRole(ctx, k8sClient, roleName, sccName)).To(Succeed())
 			Expect(createSCCRoleBinding(ctx, k8sClient, bindingName, roleName, saName, deleteNs)).To(Succeed())
 			Expect(createServiceAccount(ctx, k8sClient, saName, deleteNs)).To(Succeed())
@@ -243,7 +207,7 @@ var _ = Describe("OpenShift SCC helpers", func() {
 			saName := "test-skip-sa"
 
 			By("creating the resources")
-			Expect(ensureSCC(ctx, k8sClient, buildDevicePluginSCC(sccName))).To(Succeed())
+			Expect(ensureSCC(ctx, k8sClient, buildXpuManagerSCC(sccName))).To(Succeed())
 			Expect(createSCCRole(ctx, k8sClient, roleName, sccName)).To(Succeed())
 			Expect(createSCCRoleBinding(ctx, k8sClient, bindingName, roleName, saName, deleteNs)).To(Succeed())
 			Expect(createServiceAccount(ctx, k8sClient, saName, deleteNs)).To(Succeed())

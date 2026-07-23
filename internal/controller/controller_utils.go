@@ -63,32 +63,6 @@ func isClusterPolicyBeingDeleted(cp *v1alpha.ClusterPolicy) bool {
 	return false
 }
 
-func shouldRemoveDRA(cp *v1alpha.ClusterPolicy) bool {
-	if isClusterPolicyBeingDeleted(cp) {
-		return true
-	}
-
-	// DRA not selected
-	if cp.Spec.ResourceRegistration != resourceModeDRA {
-		return true
-	}
-
-	return false
-}
-
-func shouldRemoveDevicePlugin(cp *v1alpha.ClusterPolicy) bool {
-	if isClusterPolicyBeingDeleted(cp) {
-		return true
-	}
-
-	// DP not selected
-	if cp.Spec.ResourceRegistration != resourceModeDP {
-		return true
-	}
-
-	return false
-}
-
 func shouldRemoveXpumd(cp *v1alpha.ClusterPolicy) bool {
 	if isClusterPolicyBeingDeleted(cp) {
 		return true

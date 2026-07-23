@@ -1,0 +1,14 @@
+{{- if .Values.openshift.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-dra-scc-role
+  labels:
+    app.kubernetes.io/name: intel-gpu-base-operator
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+rules:
+- apiGroups: ["security.openshift.io"]
+  resources: ["securitycontextconstraints"]
+  resourceNames: ["{{ .Release.Name }}-dra-scc"]
+  verbs: ["use"]
+{{- end }}

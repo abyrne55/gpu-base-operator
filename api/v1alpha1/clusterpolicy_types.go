@@ -69,6 +69,12 @@ type ClusterPolicySpec struct {
 	// +kubebuilder:validation:Range=0:4
 	// +kubebuilder:validation:Default=2
 	LogLevel int32 `json:"logLevel,omitempty"`
+
+	// KernelModule configures out-of-tree kernel module loading via KMM.
+	// When set, KMM loads the specified OOT driver module on each node.
+	// When nil, the in-tree kernel driver is used.
+	// +optional
+	KernelModule *KernelModuleSpec `json:"kernelModule,omitempty"`
 }
 
 // DynamicResourceAllocationSpec defines the desired state of DynamicResourceAllocation.
@@ -147,11 +153,104 @@ type XpuManagerSpec struct {
 	MonitoringResource string `json:"monitoringResource,omitempty"`
 }
 
+// KernelModuleSpec configures out-of-tree kernel module loading via KMM.
+type KernelModuleSpec struct {
+	// ModuleName is the kernel module to load (e.g., "xe").
+	// Also used as the default InTreeModulesToRemove entry.
+	ModuleName string `json:"moduleName"`
+
+	// Image is the default container image for the OOT driver module.
+	// When KernelMappings is empty, generates a single wildcard mapping.
+	// When KernelMappings is non-empty, serves as the KMM-level fallback
+	// for mappings that omit ContainerImage.
+	// +optional
+	Image string `json:"image,omitempty"`
+
+	// KernelMappings maps kernel version patterns to container images or
+	// build specifications. Translates directly to KMM KernelMapping
+	// objects. When empty, a single wildcard mapping (regexp "^.+$") is
+	// generated from Image.
+	// +optional
+	KernelMappings []KernelMappingSpec `json:"kernelMappings,omitempty"`
+
+	// InTreeModulesToRemove lists in-tree modules to unload before
+	// inserting the OOT module. ModuleName is always included implicitly.
+	// +optional
+	InTreeModulesToRemove []string `json:"inTreeModulesToRemove,omitempty"`
+
+	// ModulesLoadingOrder specifies softdep-style loading order for
+	// multi-module drivers. First element must be ModuleName; KMM loads
+	// in order and unloads in reverse. Must have >=2 entries if set.
+	// +optional
+	ModulesLoadingOrder []string `json:"modulesLoadingOrder,omitempty"`
+
+	// FirmwarePath is the in-container path where firmware files are stored.
+	// +optional
+	FirmwarePath string `json:"firmwarePath,omitempty"`
+
+	// SkipTLSVerify disables TLS certificate verification when pulling
+	// OOT driver images. For air-gapped or internal registries.
+	// +optional
+	SkipTLSVerify bool `json:"skipTLSVerify,omitempty"`
+}
+
+// KernelMappingSpec maps a kernel version pattern to a container image
+// or build specification.
+type KernelMappingSpec struct {
+	// Regexp is a regular expression matched against node kernel versions.
+	// Exactly one of Regexp or Literal must be set.
+	// +optional
+	Regexp string `json:"regexp,omitempty"`
+
+	// Literal is an exact kernel version string to match.
+	// Exactly one of Regexp or Literal must be set.
+	// +optional
+	Literal string `json:"literal,omitempty"`
+
+	// ContainerImage is the full image reference for this kernel version.
+	// Required when Build is nil and no parent-level Image is set.
+	// +optional
+	ContainerImage string `json:"containerImage,omitempty"`
+
+	// Build configures in-cluster building of the driver image via KMM.
+	// When set, KMM builds the image if it doesn't exist in the registry.
+	// +optional
+	Build *KernelModuleBuildSpec `json:"build,omitempty"`
+
+	// InTreeModulesToRemove overrides the parent-level list for this
+	// specific kernel mapping.
+	// +optional
+	InTreeModulesToRemove []string `json:"inTreeModulesToRemove,omitempty"`
+}
+
+// KernelModuleBuildSpec configures in-cluster driver image building.
+type KernelModuleBuildSpec struct {
+	// DockerfileConfigMap references a ConfigMap containing the Dockerfile.
+	DockerfileConfigMap v1.LocalObjectReference `json:"dockerfileConfigMap"`
+
+	// BuildArgs are key-value pairs passed to the image builder.
+	// +optional
+	BuildArgs []BuildArg `json:"buildArgs,omitempty"`
+
+	// Secrets are made available during the build (e.g., for private
+	// source repos). Not for registry auth -- use pullSecret on
+	// ClusterPolicySpec.
+	// +optional
+	Secrets []v1.LocalObjectReference `json:"secrets,omitempty"`
+}
+
+// BuildArg is a key-value pair passed as a build argument.
+type BuildArg struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 // ClusterPolicyStatus defines the observed state of ClusterPolicy.
 type ClusterPolicyStatus struct {
 	DevicePluginStatus string   `json:"devicePluginStatus,omitempty"`
 	DRAStatus          string   `json:"draStatus,omitempty"`
 	XPUManagerStatus   string   `json:"xpuManagerStatus,omitempty"`
+	KMMStatus          string   `json:"kmmStatus,omitempty"`
 	Errors             []string `json:"errors,omitempty"`
 }
 
@@ -183,6 +282,7 @@ type LocalQueueSpec struct {
 // +kubebuilder:printcolumn:name="DP",type=string,JSONPath=`.status.devicePluginStatus`
 // +kubebuilder:printcolumn:name="DRA",type=string,JSONPath=`.status.draStatus`
 // +kubebuilder:printcolumn:name="XPU",type=string,JSONPath=`.status.xpuManagerStatus`
+// +kubebuilder:printcolumn:name="KMM",type=string,JSONPath=`.status.kmmStatus`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +operator-sdk:csv:customresourcedefinitions:displayName="Intel GPU Cluster Policy"
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
