@@ -95,6 +95,7 @@ func validateClusterPolicySpec(spec *ClusterPolicySpec) (admission.Warnings, err
 	errs = append(errs, validatePullSecret(spec)...)
 	errs = append(errs, validateConfigMapOverride(spec)...)
 	errs = append(errs, validateKueueSpec(spec)...)
+	errs = append(errs, validateKernelModuleSpec(spec)...)
 
 	if w := warnForSpecProblems(spec); w != "" {
 		warnings = append(warnings, w)
@@ -218,6 +219,114 @@ func validateKueueSpec(spec *ClusterPolicySpec) []error {
 
 			seenLQKeys[key] = true
 		}
+	}
+
+	return errs
+}
+
+func validateKernelModuleSpec(spec *ClusterPolicySpec) []error {
+	if spec.KernelModule == nil {
+		return nil
+	}
+
+	km := spec.KernelModule
+	var errs []error
+
+	if km.ModuleName == "" {
+		errs = append(errs, fmt.Errorf("kernelModule.moduleName is required"))
+	}
+
+	if km.Image != "" {
+		if err := validateImageTagOrDigest("kernelModule.image", km.Image); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	if len(km.KernelMappings) == 0 {
+		if km.Image == "" {
+			errs = append(errs, fmt.Errorf("kernelModule.image is required when kernelMappings is empty"))
+		}
+	} else {
+		for i, m := range km.KernelMappings {
+			prefix := fmt.Sprintf("kernelModule.kernelMappings[%d]", i)
+			errs = append(errs, validateKernelMapping(prefix, &m, km.Image)...)
+		}
+	}
+
+	if len(km.ModulesLoadingOrder) > 0 {
+		errs = append(errs, validateModulesLoadingOrder(km.ModuleName, km.ModulesLoadingOrder)...)
+	}
+
+	return errs
+}
+
+func validateImageTagOrDigest(field, image string) error {
+	if _, err := reference.ParseNormalizedNamed(image); err != nil {
+		return fmt.Errorf("invalid image reference in %s: %q: %w", field, image, err)
+	}
+
+	if !strings.Contains(image, ":") && !strings.Contains(image, "@") {
+		return fmt.Errorf("%s: image %q must include an explicit tag or digest", field, image)
+	}
+
+	return nil
+}
+
+func validateKernelMapping(prefix string, m *KernelMappingSpec, parentImage string) []error {
+	var errs []error
+
+	hasRegexp := m.Regexp != ""
+	hasLiteral := m.Literal != ""
+
+	if hasRegexp && hasLiteral {
+		errs = append(errs, fmt.Errorf("%s: regexp and literal are mutually exclusive", prefix))
+	} else if !hasRegexp && !hasLiteral {
+		errs = append(errs, fmt.Errorf("%s: exactly one of regexp or literal must be set", prefix))
+	}
+
+	if hasRegexp {
+		if _, err := regexp.Compile(m.Regexp); err != nil {
+			errs = append(errs, fmt.Errorf("%s.regexp: invalid regular expression: %w", prefix, err))
+		}
+	}
+
+	if m.ContainerImage != "" {
+		if err := validateImageTagOrDigest(prefix+".containerImage", m.ContainerImage); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	if m.ContainerImage == "" && m.Build == nil && parentImage == "" {
+		errs = append(errs, fmt.Errorf("%s: one of containerImage, build, or parent-level image must be set", prefix))
+	}
+
+	if m.Build != nil {
+		if m.Build.DockerfileConfigMap.Name == "" {
+			errs = append(errs, fmt.Errorf("%s.build.dockerfileConfigMap.name is required", prefix))
+		}
+	}
+
+	return errs
+}
+
+func validateModulesLoadingOrder(moduleName string, order []string) []error {
+	var errs []error
+
+	if len(order) < 2 {
+		errs = append(errs, fmt.Errorf("kernelModule.modulesLoadingOrder must have at least 2 entries"))
+	}
+
+	if len(order) > 0 && moduleName != "" && order[0] != moduleName {
+		errs = append(errs, fmt.Errorf("kernelModule.modulesLoadingOrder[0] must be moduleName %q", moduleName))
+	}
+
+	seen := make(map[string]bool, len(order))
+	for i, entry := range order {
+		if seen[entry] {
+			errs = append(errs, fmt.Errorf("kernelModule.modulesLoadingOrder[%d]: duplicate entry %q", i, entry))
+			break
+		}
+		seen[entry] = true
 	}
 
 	return errs

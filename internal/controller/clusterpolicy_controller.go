@@ -41,6 +41,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	v1alpha "github.com/intel/gpu-base-operator/api/v1alpha1"
+	kmmv1beta1 "github.com/kubernetes-sigs/kernel-module-management/api/v1beta1"
 )
 
 // ClusterPolicyReconciler reconciles a ClusterPolicy object
@@ -52,12 +53,14 @@ type ClusterPolicyReconciler struct {
 }
 
 type ControllerOpts struct {
-	ReqName      string
-	Namespace    string
-	SecretName   string
-	RequeueDelay time.Duration
-	DRAEnable    bool
-	OpenShift    bool
+	ReqName                        string
+	Namespace                      string
+	SecretName                     string
+	RequeueDelay                   time.Duration
+	DRAEnable                      bool
+	OpenShift                      bool
+	KMMEnable                      bool
+	ModuleLoaderServiceAccountName string
 }
 
 type requeueReconcileErr struct {
@@ -169,9 +172,13 @@ func (r *ClusterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	opts := r.Opts
 	opts.ReqName = req.Name
 
-	subControllers := make([]SubControllerInterface, 0, 4)
+	subControllers := make([]SubControllerInterface, 0, 5)
 
 	// Initialize sub-controllers
+	if cp != nil && cp.Spec.KernelModule != nil && opts.KMMEnable {
+		subControllers = append(subControllers, &KMMReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
+	}
+
 	subControllers = append(subControllers, &DevicePluginReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
 	subControllers = append(subControllers, &XpuManagerReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
 	// Include DRA subcontroller even though cluster might not be configured to use DRA, so it can report a status correctly.
@@ -344,6 +351,10 @@ func (r *ClusterPolicyReconciler) SetupWithManager(mgr ctrl.Manager, opts Contro
 		For(&v1alpha.ClusterPolicy{}).
 		Named("clusterpolicy").
 		Owns(&apps.DaemonSet{})
+
+	if opts.KMMEnable {
+		b = b.Owns(&kmmv1beta1.Module{})
+	}
 
 	// Only watch DRA pods when DRA is enabled in the cluster, to avoid unnecessary
 	// pod list/watch permissions and reconcile noise when DRA is not in use.

@@ -152,6 +152,32 @@ func buildFWUpdateSCC(name string) *unstructured.Unstructured {
 	})
 }
 
+// buildModuleLoaderSCC returns the SCC for KMM module-loader pods.
+// Module-loader pods need privileged access and SYS_MODULE for modprobe.
+func buildModuleLoaderSCC(name string) *unstructured.Unstructured {
+	return buildSCC(name, map[string]interface{}{
+		"allowPrivilegedContainer": true,
+		"allowHostDirVolumePlugin": true,
+		"allowHostIPC":             false,
+		"allowHostNetwork":         false,
+		"allowHostPID":             false,
+		"allowHostPorts":           false,
+		"allowPrivilegeEscalation": true,
+		"allowedCapabilities":      []interface{}{"SYS_MODULE"},
+		"defaultAddCapabilities":   nil,
+		"fsGroup":                  map[string]interface{}{"type": "RunAsAny"},
+		"readOnlyRootFilesystem":   false,
+		"requiredDropCapabilities": nil,
+		"runAsUser":                map[string]interface{}{"type": "RunAsAny"},
+		"seLinuxContext":           map[string]interface{}{"type": "RunAsAny"},
+		"seccompProfiles":          []interface{}{"*"},
+		"supplementalGroups":       map[string]interface{}{"type": "RunAsAny"},
+		"volumes":                  []interface{}{"hostPath", "configMap", "secret", "projected"},
+		"users":                    []interface{}{},
+		"groups":                   []interface{}{},
+	})
+}
+
 func buildOpenShiftNames(crName, componentName string) (sccName string, roleName string, bindingName string, saName string) {
 	sccName = fmt.Sprintf("%s-%s-scc", crName, componentName)
 	roleName = fmt.Sprintf("%s-%s-scc-role", crName, componentName)
