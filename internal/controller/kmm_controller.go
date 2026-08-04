@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -202,6 +203,10 @@ func (r *KMMReconciler) deleteModuleIfExists(ctx context.Context, name string) (
 		return ctrl.Result{}, fmt.Errorf("failed to get KMM Module %s: %w", name, err)
 	}
 
+	if r.Opts.DRAEnable && r.anyAllocatedResourceClaims(ctx, gpuDeviceClass) {
+		return ctrl.Result{RequeueAfter: r.Opts.RequeueDelay}, requeueReconcileErr{}
+	}
+
 	klog.Infof("Deleting KMM Module %s", name)
 
 	if err := r.Delete(ctx, mod); err != nil && !apierrors.IsNotFound(err) {
@@ -209,6 +214,33 @@ func (r *KMMReconciler) deleteModuleIfExists(ctx context.Context, name string) (
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *KMMReconciler) anyAllocatedResourceClaims(ctx context.Context, driverName string) bool {
+	var rcList resourcev1.ResourceClaimList
+
+	klog.Info("Checking for allocated ResourceClaims that would prevent module removal")
+
+	if err := r.List(ctx, &rcList); err != nil {
+		klog.Error(err, "unable to list ResourceClaims, assuming allocated claims exist")
+		return true
+	}
+
+	for _, claim := range rcList.Items {
+		alloc := claim.Status.Allocation
+		if alloc == nil || len(alloc.Devices.Results) == 0 {
+			continue
+		}
+
+		for _, dev := range alloc.Devices.Results {
+			if dev.Driver == driverName {
+				klog.Infof("Found allocated ResourceClaim with GPU device: %s", claim.Name)
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (r *KMMReconciler) ensureOpenShiftSCC(ctx context.Context, cp *v1alpha.ClusterPolicy) error {

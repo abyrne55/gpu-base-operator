@@ -18,10 +18,12 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -676,6 +678,134 @@ var _ = Describe("KMM Controller", func() {
 			},
 		),
 	)
+
+	Context("When deleting Module with allocated ResourceClaims", func() {
+		const (
+			namespace    = "kmm-rc-safety"
+			resourceName = "kmm-rc-safety"
+		)
+
+		ctx := context.Background()
+		typeNamespacedName := types.NamespacedName{Name: resourceName}
+
+		BeforeEach(func() {
+			Expect(k8sClient.Create(ctx, &v1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{Name: namespace},
+			})).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &v1alpha.ClusterPolicy{}
+			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+
+			var rcList resourcev1.ResourceClaimList
+			if err := k8sClient.List(ctx, &rcList); err == nil {
+				for i := range rcList.Items {
+					_ = k8sClient.Delete(ctx, &rcList.Items[i])
+				}
+			}
+		})
+
+		It("should requeue instead of deleting the Module", func() {
+			cp := &v1alpha.ClusterPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName},
+				Spec: v1alpha.ClusterPolicySpec{
+					ResourceRegistration: "dra",
+					KernelModule: &v1alpha.KernelModuleSpec{
+						ModuleName: "xe",
+						Image:      "registry.example.com/xe-driver:1.0",
+					},
+					DynamicResourceAllocationSpec: v1alpha.DynamicResourceAllocationSpec{
+						Image: "ghcr.io/intel/gpu-dra:v0.11.0",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cp)).To(Succeed())
+
+			reconciler := &ClusterPolicyReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+				Opts: ControllerOpts{
+					Namespace:                      namespace,
+					KMMEnable:                      true,
+					DRAEnable:                      true,
+					RequeueDelay:                   5 * time.Second,
+					ModuleLoaderServiceAccountName: "intel-gpu-module-loader",
+				},
+			}
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			modKey := types.NamespacedName{Name: resourceName + kmmModuleSuffix, Namespace: namespace}
+			Expect(k8sClient.Get(ctx, modKey, &kmmv1beta1.Module{})).To(Succeed())
+
+			By("creating an allocated ResourceClaim with a GPU device")
+			rc := &resourcev1.ResourceClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-gpu-claim",
+					Namespace: namespace,
+				},
+				Spec: resourcev1.ResourceClaimSpec{
+					Devices: resourcev1.DeviceClaim{
+						Requests: []resourcev1.DeviceRequest{
+							{
+								Name: "gpu",
+								FirstAvailable: []resourcev1.DeviceSubRequest{
+									{
+										Name:            "gpu-sub",
+										DeviceClassName: gpuDeviceClass,
+										AllocationMode:  resourcev1.DeviceAllocationModeExactCount,
+										Count:           1,
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rc)).To(Succeed())
+
+			rc.Status.Allocation = &resourcev1.AllocationResult{
+				Devices: resourcev1.DeviceAllocationResult{
+					Results: []resourcev1.DeviceRequestAllocationResult{
+						{
+							Request: "gpu",
+							Driver:  gpuDeviceClass,
+							Pool:    "node-pool",
+							Device:  "gpu-0",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, rc)).To(Succeed())
+
+			By("removing KernelModule to trigger deletion")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, cp)).To(Succeed())
+			cp.Spec.KernelModule = nil
+			Expect(k8sClient.Update(ctx, cp)).To(Succeed())
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(5 * time.Second))
+
+			By("verifying Module was NOT deleted")
+			Expect(k8sClient.Get(ctx, modKey, &kmmv1beta1.Module{})).To(Succeed())
+
+			By("removing the ResourceClaim and reconciling again")
+			Expect(k8sClient.Delete(ctx, rc)).To(Succeed())
+
+			result, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+
+			By("verifying Module was deleted")
+			err = k8sClient.Get(ctx, modKey, &kmmv1beta1.Module{})
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+		})
+	})
 
 	Context("When KernelModule is nil", func() {
 		const (
