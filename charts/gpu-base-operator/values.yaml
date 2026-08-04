@@ -81,3 +81,9 @@ kueue:
         - deviceClassNames:
           - "gpu.intel.com"
           name: "dra.gpu.intel.com"
+
+openshift:
+  enabled: false
+
+moduleLoader:
+  serviceAccountName: intel-gpu-module-loader

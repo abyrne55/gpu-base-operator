@@ -75,12 +75,6 @@ func (r *KMMReconciler) Reconcile(ctx context.Context, cp *v1alpha.ClusterPolicy
 		return r.deleteModuleIfExists(ctx, moduleName)
 	}
 
-	if r.Opts.OpenShift {
-		if err := r.ensureOpenShiftSCC(ctx, cp); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set up module-loader SCC: %w", err)
-		}
-	}
-
 	mod := &kmmv1beta1.Module{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      moduleName,
@@ -241,26 +235,6 @@ func (r *KMMReconciler) anyAllocatedResourceClaims(ctx context.Context, driverNa
 	}
 
 	return false
-}
-
-func (r *KMMReconciler) ensureOpenShiftSCC(ctx context.Context, cp *v1alpha.ClusterPolicy) error {
-	sccName, roleName, bindingName, _ := buildOpenShiftNames(cp.Name, "module-loader")
-	saName := r.Opts.ModuleLoaderServiceAccountName
-
-	if err := createServiceAccount(ctx, r.Client, saName, r.Opts.Namespace); err != nil {
-		return err
-	}
-
-	scc := buildModuleLoaderSCC(sccName)
-	if err := ensureSCC(ctx, r.Client, scc); err != nil {
-		return err
-	}
-
-	if err := createSCCRole(ctx, r.Client, roleName, sccName); err != nil {
-		return err
-	}
-
-	return createSCCRoleBinding(ctx, r.Client, bindingName, roleName, saName, r.Opts.Namespace)
 }
 
 func (r *KMMReconciler) updateStatus(cp *v1alpha.ClusterPolicy, mod *kmmv1beta1.Module) {

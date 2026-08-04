@@ -73,8 +73,6 @@ const (
 	openshiftCluster = "OpenShift"
 	draCluster       = "DRA"
 	kmmCluster       = "KMM"
-
-	defaultModuleLoaderSAName = "intel-gpu-module-loader"
 )
 
 func init() {
@@ -335,7 +333,7 @@ func main() {
 
 	moduleLoaderSAName := os.Getenv("MODULE_LOADER_SERVICE_ACCOUNT_NAME")
 	if moduleLoaderSAName == "" {
-		moduleLoaderSAName = defaultModuleLoaderSAName
+		moduleLoaderSAName = "intel-gpu-module-loader"
 	}
 
 	copts := controller.ControllerOpts{
