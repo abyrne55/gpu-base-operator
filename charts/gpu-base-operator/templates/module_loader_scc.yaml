@@ -33,6 +33,8 @@ volumes:
   - configMap
   - secret
   - projected
+  - emptyDir
+  - downwardAPI
 users: []
 groups: []
 {{- end }}
