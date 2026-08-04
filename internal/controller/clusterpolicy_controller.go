@@ -175,10 +175,7 @@ func (r *ClusterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	subControllers := make([]SubControllerInterface, 0, 5)
 
 	// Initialize sub-controllers
-	if cp != nil && cp.Spec.KernelModule != nil && opts.KMMEnable {
-		subControllers = append(subControllers, &KMMReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
-	}
-
+	subControllers = append(subControllers, &KMMReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
 	subControllers = append(subControllers, &DevicePluginReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
 	subControllers = append(subControllers, &XpuManagerReconciler{Client: r.Client, Scheme: r.Scheme, Opts: opts})
 	// Include DRA subcontroller even though cluster might not be configured to use DRA, so it can report a status correctly.

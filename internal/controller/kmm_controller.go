@@ -67,6 +67,10 @@ func (r *KMMReconciler) Reconcile(ctx context.Context, cp *v1alpha.ClusterPolicy
 	}
 
 	if cp == nil || cp.Spec.KernelModule == nil {
+		if cp != nil {
+			cp.Status.KMMStatus = notAvailableStatus
+		}
+
 		return r.deleteModuleIfExists(ctx, moduleName)
 	}
 
