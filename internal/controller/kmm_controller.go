@@ -60,7 +60,7 @@ func (r *KMMReconciler) Reconcile(ctx context.Context, cp *v1alpha.ClusterPolicy
 	moduleName := kmmModuleName(r.Opts.ReqName)
 
 	if !r.Opts.KMMEnable {
-		if cp != nil {
+		if cp != nil && cp.Spec.KernelModule != nil {
 			addIfMissing(&cp.Status.Errors, kmmNotEnabledMsg)
 		}
 
@@ -121,7 +121,7 @@ func (r *KMMReconciler) setModuleLoader(mod *kmmv1beta1.Module, cp *v1alpha.Clus
 		},
 		ContainerImage:        km.Image,
 		InTreeModulesToRemove: dedupeStrings(append([]string{km.ModuleName}, km.InTreeModulesToRemove...)),
-		ImagePullPolicy:       v1.PullAlways,
+		ImagePullPolicy:       v1.PullIfNotPresent,
 		RegistryTLS: kmmv1beta1.TLSOptions{
 			InsecureSkipTLSVerify: km.SkipTLSVerify,
 		},

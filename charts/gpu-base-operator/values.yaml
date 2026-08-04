@@ -86,4 +86,5 @@ openshift:
   enabled: false
 
 moduleLoader:
+  create: true
   serviceAccountName: intel-gpu-module-loader
