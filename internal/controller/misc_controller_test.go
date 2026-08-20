@@ -132,6 +132,32 @@ var _ = Describe("Misc", func() {
 			}
 		}
 
+		checkValuesForB60 := func(rule nfdcrd.Rule) {
+			for k, v := range *rule.MatchFeatures[0].MatchExpressions {
+				switch k {
+				case "vendor":
+					Expect(v.Value).To(Equal(nfdcrd.MatchValue{"8086"}))
+				case "class":
+					Expect(v.Value).To(Equal(nfdcrd.MatchValue{"0300"}))
+				case "device":
+					Expect(v.Value).To(Equal(nfdcrd.MatchValue{"e211"}))
+				default:
+					Fail("unexpected match expression key: " + k)
+				}
+			}
+
+			for k, v := range rule.Labels {
+				switch k {
+				case "gpu.intel.com/product":
+					Expect(v).To(Equal("Arc_Pro_B60"))
+				case "gpu.intel.com/architecture":
+					Expect(v).To(Equal("Xe2"))
+				default:
+					Fail("unexpected label key: " + k)
+				}
+			}
+		}
+
 		It("with defaults", func() {
 			spec := &v1alpha.ClusterPolicy{
 				Spec: v1alpha.ClusterPolicySpec{},
@@ -140,10 +166,13 @@ var _ = Describe("Misc", func() {
 			nfr := createNfdRule(spec, "")
 			Expect(nfr).NotTo(BeNil())
 
-			Expect(nfr.Spec.Rules).To(HaveLen(1))
+			Expect(nfr.Spec.Rules).To(HaveLen(9))
 			rule := nfr.Spec.Rules[0]
 
 			checkValues(rule.MatchFeatures[0].MatchExpressions)
+
+			b60Rule := nfr.Spec.Rules[2]
+			checkValuesForB60(b60Rule)
 		})
 	})
 })
