@@ -125,7 +125,7 @@ var _ = Describe("Misc", func() {
 				case "vendor":
 					Expect(v.Value).To(Equal(nfdcrd.MatchValue{"8086"}))
 				case "class":
-					Expect(v.Value).To(Equal(nfdcrd.MatchValue{"0300", "0380"}))
+					Expect(v.Value).To(Equal(nfdcrd.MatchValue{"0300", "0380", "1200"}))
 				default:
 					Fail("unexpected match expression key: " + k)
 				}
